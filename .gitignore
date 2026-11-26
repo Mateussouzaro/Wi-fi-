@@ -1,3 +1,6 @@
 
 # reanimate skill dependencies (reinstalled by its setup.sh)
 .claude/skills/reanimate/scripts/node_modules/
+
+# reanimate working evidence (frames, sheets)
+.reanimate/
