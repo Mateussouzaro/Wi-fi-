@@ -694,7 +694,7 @@ $("play").addEventListener("click", async () => {
   document.body.classList.add("playing");
   paused = false;
   last = performance.now();
-  bigMsg("ROTA SUL", "Bem-vindo a Porto Sol", "#ffd36b", 3);
+  bigMsg("BRASIL ROTA SUL", "Bem-vindo a Porto Sol", "#ffd36b", 3);
   try {
     await document.documentElement.requestFullscreen?.();
     await (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.("landscape");
