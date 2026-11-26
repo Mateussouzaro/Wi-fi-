@@ -71,7 +71,7 @@ const peds: Pedestrian[] = [];
 const police: Driver[] = [];
 
 const player = {
-  mesh: makeHuman(7, { shirt: 0xffdf00, pants: 0x1d3557, skin: 0xa0673a, cap: 0x009c3b }),
+  mesh: makeHuman(7, { shirt: 0xffdf00, pants: 0x1d3557, skin: 0xa0673a, cap: 0x009c3b, female: false }),
   pos: new THREE.Vector3(),
   heading: 0,
   phase: 0,
@@ -395,7 +395,11 @@ function init() {
     composer.addPass(new OutputPass());
   }
   spawnTraffic(quality === "alta" ? 22 : 14);
-  for (let k = 0; k < (quality === "alta" ? 34 : 18); k++) peds.push(new Pedestrian(k + 1, scene));
+  for (let k = 0; k < (quality === "alta" ? 26 : 12); k++) {
+    const ped = new Pedestrian(k + 1, scene);
+    if (quality === "baixa") ped.mesh.group.traverse((o) => (o.castShadow = false));
+    peds.push(ped);
+  }
   // the player's own red sports car, parked on the beach avenue
   const mine = new Car("sport", 0xc1121f, scene);
   mine.pos.set(roadX[2] + 12, 0, BEACH_ROAD - ROAD / 2 + 3.2);
