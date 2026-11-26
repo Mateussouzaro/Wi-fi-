@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0077b6" />
+    <title>Céu de Pipa</title>
+    <style>
+      :root { color-scheme: dark; --sky: #0077b6; --deep: #03045e; --sun: #ffd23f; --hot: #ff7b00; --ink: #ffffff; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); color: var(--ink); font-family: "Inter", system-ui, -apple-system, Roboto, sans-serif; touch-action: none; }
+      #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+      /* ------------- menu */
+      #menu { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; text-align: center;
+        background: linear-gradient(180deg, rgba(3,4,94,.15), rgba(3,4,94,.55)); }
+      #menu h1 { margin: 0; font-size: clamp(48px, 15vw, 96px); line-height: .88; font-weight: 900; font-style: italic; letter-spacing: -2px; color: #fff;
+        text-shadow: 0 5px 0 var(--deep), 0 10px 26px rgba(0,0,0,.35); }
+      #menu h1 span { display: block; color: var(--sun); }
+      .tag { font-size: 12px; letter-spacing: 3px; font-weight: 800; text-transform: uppercase; opacity: .9; }
+      .card { background: rgba(3,4,94,.55); border: 2px solid rgba(255,255,255,.25); border-radius: 18px; padding: 12px 14px; width: min(340px, 92vw); backdrop-filter: blur(6px); }
+      .row { display: flex; gap: 8px; align-items: center; justify-content: center; }
+      #preview { width: 150px; height: 150px; }
+      .arrow { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.2); color: #fff; font-size: 22px; font-weight: 900; }
+      #kname { font-weight: 900; font-size: 18px; }
+      .btn { border: 0; border-radius: 14px; padding: 12px 20px; font-weight: 900; font-size: 16px; color: var(--deep); background: var(--sun); box-shadow: 0 5px 0 #b4870f; cursor: pointer; }
+      .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #b4870f; }
+      .btn.alt { background: rgba(255,255,255,.2); color: #fff; box-shadow: 0 5px 0 rgba(0,0,0,.25); }
+      #play { font-size: 24px; padding: 16px 44px; }
+      .help { font-size: 12px; line-height: 1.5; opacity: .92; max-width: 340px; }
+
+      /* ------------- HUD */
+      #hud { display: none; position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+      #top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); display: flex; justify-content: space-between; align-items: center; font-weight: 900; text-shadow: 0 2px 4px rgba(0,0,0,.45); font-size: 15px; }
+      #coins { color: #ffe66d; font-size: 18px; }
+      #pause { pointer-events: auto; border: 0; width: 38px; height: 38px; border-radius: 10px; background: rgba(0,0,0,.25); color: #fff; font-size: 16px; margin-left: 8px; }
+      #msg { position: absolute; top: 22%; width: 100%; text-align: center; font-weight: 900; font-style: italic; font-size: clamp(26px, 8vw, 46px); text-shadow: 0 4px 0 rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.3); opacity: 0; transform: scale(.6); transition: opacity .25s, transform .25s cubic-bezier(.2,1.6,.4,1); padding: 0 16px; }
+      #msg.pop { opacity: 1; transform: scale(1); }
+      #rub { position: absolute; top: 33%; width: 100%; text-align: center; font-weight: 900; font-size: 15px; letter-spacing: 3px; color: #fff1a8; opacity: 0; transition: opacity .15s; text-shadow: 0 2px 6px #000; }
+
+      /* combo badge: fanned kites + number in a medal, with fire at 5+ */
+      #combo { position: absolute; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: 120px; height: 110px; visibility: hidden; }
+      #combo .fan { position: absolute; left: 50%; top: 8px; width: 0; height: 0; }
+      #combo .fan b { position: absolute; width: 30px; height: 30px; left: -15px; top: 0; border-radius: 5px; border: 2px solid #fff; background: linear-gradient(135deg, #1b1b2f 0 50%, #ff7b00 50%); transform-origin: 50% 120%; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+      #combo .fan b:nth-child(1) { transform: rotate(-30deg) rotate(45deg); }
+      #combo .fan b:nth-child(2) { transform: rotate(-10deg) rotate(45deg); }
+      #combo .fan b:nth-child(3) { transform: rotate(10deg) rotate(45deg); }
+      #combo .fan b:nth-child(4) { transform: rotate(30deg) rotate(45deg); }
+      #comboN { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); width: 44px; height: 44px; border-radius: 50%; background: #111; border: 3px solid #fff; display: grid; place-items: center; font-weight: 900; font-size: 22px; font-variant-numeric: tabular-nums; }
+      #combo::after { content: ""; position: absolute; left: -40px; right: -40px; top: 60px; height: 26px; border-radius: 50%; background: radial-gradient(ellipse, rgba(255,140,0,.95), rgba(255,60,0,.5) 45%, transparent 70%); opacity: 0; transition: opacity .3s; z-index: -1; filter: blur(2px); }
+      #combo.fire::after { opacity: 1; animation: flick .18s infinite alternate; }
+      #combo.bump { animation: bump .35s cubic-bezier(.2,1.8,.4,1); }
+      @keyframes bump { 0% { transform: translateX(-50%) scale(1.45); } 100% { transform: translateX(-50%) scale(1); } }
+      @keyframes flick { from { transform: scaleX(1); } to { transform: scaleX(1.12) scaleY(1.2); } }
+      #fx { position: absolute; left: 0; right: 0; bottom: calc(200px + env(safe-area-inset-bottom)); height: 160px; }
+      #fx i { position: absolute; bottom: 0; border-radius: 50%; background: rgba(255,255,255,.75); animation: rise 1.4s ease-out forwards; }
+      @keyframes rise { to { transform: translateY(-150px) translateX(10px); opacity: 0; } }
+
+      /* line meter */
+      #meter { position: absolute; right: max(14px, env(safe-area-inset-right)); top: 34%; width: 14px; height: 150px; border-radius: 7px; background: rgba(0,0,0,.3); border: 2px solid rgba(255,255,255,.6); overflow: hidden; }
+      #meterFill { position: absolute; bottom: 0; width: 100%; background: linear-gradient(#fff, #cfe8ff); }
+      #meterTxt { position: absolute; right: max(4px, env(safe-area-inset-right)); top: calc(34% + 158px); font-weight: 900; font-size: 12px; text-shadow: 0 1px 3px #000; }
+
+      #controls { position: absolute; left: max(14px, env(safe-area-inset-left)); right: max(14px, env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; pointer-events: none; }
+      #controls button { pointer-events: auto; width: 86px; height: 86px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7); background: rgba(3,4,94,.35); color: #fff; font-weight: 900; font-size: 12px; line-height: 1.1; }
+      #controls button.down { background: rgba(255,210,63,.6); }
+      #controls button big { display: block; font-size: 24px; }
+      #tip { position: absolute; bottom: calc(110px + env(safe-area-inset-bottom)); width: 100%; text-align: center; font-size: 12px; font-weight: 800; opacity: .8; text-shadow: 0 1px 3px #000; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="menu">
+      <div class="tag">Corta, rela e apara</div>
+      <h1>CÉU DE<span>PIPA</span></h1>
+      <div class="card">
+        <div class="row" style="justify-content: space-between"><b>Sua pipa</b><b id="menuCoins">🪙 0</b></div>
+        <div class="row"><button class="arrow" id="kprev">‹</button><canvas id="preview" width="300" height="300"></canvas><button class="arrow" id="knext">›</button></div>
+        <div id="kname">—</div>
+        <div class="row" style="margin-top: 8px"><button class="btn alt" id="kbuy">Usar</button></div>
+        <div class="row" style="margin-top: 10px; justify-content: space-between"><b id="lineLv">Linha nível 1</b><button class="btn alt" id="lineUp">Melhorar</button></div>
+      </div>
+      <div class="row"><button class="btn" id="play">▶ SOLTAR PIPA</button></div>
+      <button class="btn alt" id="quality">Gráficos: ALTA</button>
+      <div class="help">
+        <b>Segure a tela</b> para puxar a linha: a pipa voa para onde o bico aponta. <b>Solte</b> e ela gira.<br />
+        Arraste para os lados enquanto puxa para virar o bico. <b>Dar linha</b> manda a pipa longe; <b>Recolher</b> traz de volta.<br />
+        Rele sua linha na dos outros puxando forte para <b>cortar</b>. Encoste nas pipas voadas para <b>aparar</b>.
+      </div>
+    </div>
+    <div id="hud">
+      <div id="top"><span id="cuts">✂️ 0</span><span><span id="coins">🪙 0</span><button id="pause">⏸</button></span></div>
+      <div id="msg"></div>
+      <div id="rub">RELANDO…</div>
+      <div id="fx"></div>
+      <div id="combo"><div class="fan"><b></b><b></b><b></b><b></b></div><div id="comboN">0</div></div>
+      <div id="meter"><div id="meterFill"></div></div>
+      <div id="meterTxt">0 m</div>
+      <div id="tip">Segure para puxar • arraste para virar</div>
+      <div id="controls"><button id="release"><big>🧵</big>DAR<br />LINHA</button><button id="reel"><big>🌀</big>RECOLHER</button></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
