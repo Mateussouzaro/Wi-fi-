@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#120a1e" />
+    <title>Rota Sul</title>
+    <style>
+      :root {
+        --sun1: #ffb347;
+        --sun2: #ff5e62;
+        --sun3: #7b2ff7;
+        --ink: #fff;
+        --panel: rgba(10, 8, 20, 0.55);
+      }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #120a1e; color: var(--ink); font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: none; }
+      #app { position: fixed; inset: 0; }
+      canvas#gl { display: block; width: 100%; height: 100%; }
+
+      /* ---------------- title */
+      #title { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+        background: radial-gradient(ellipse at 50% 85%, rgba(255,179,71,.95), rgba(255,94,98,.85) 30%, rgba(123,47,247,.85) 62%, #120a1e 100%); text-align: center; padding: 16px; }
+      #title h1 { margin: 0; font-size: clamp(54px, 13vw, 140px); line-height: .9; font-weight: 900; letter-spacing: -2px; font-style: italic;
+        background: linear-gradient(180deg, #fff6c9 0%, #ffd36b 45%, #ff8a3d 70%, #ff3d77 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+        filter: drop-shadow(0 6px 0 #2b0b3f) drop-shadow(0 10px 24px rgba(0,0,0,.45)); }
+      #title .sub { font-weight: 700; letter-spacing: 4px; font-size: clamp(11px, 2.6vw, 16px); text-transform: uppercase; opacity: .95; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+      #title .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+      .tbtn { border: 0; border-radius: 14px; padding: 14px 28px; font-weight: 900; font-size: 18px; letter-spacing: 1px; color: #1b0a26; background: #ffd36b; box-shadow: 0 6px 0 #b4570f; cursor: pointer; }
+      .tbtn:active { transform: translateY(4px); box-shadow: 0 2px 0 #b4570f; }
+      .tbtn.alt { background: rgba(255,255,255,.18); color: #fff; box-shadow: 0 6px 0 rgba(0,0,0,.3); }
+      #title .help { max-width: 560px; font-size: 13px; line-height: 1.5; opacity: .9; background: rgba(0,0,0,.25); padding: 10px 14px; border-radius: 12px; }
+      #loading { font-weight: 700; opacity: .9; }
+
+      /* ---------------- HUD */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
+      #hud.on { display: block; }
+      #minimap { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 12px; width: 150px; height: 150px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 4px 16px rgba(0,0,0,.5); background: #233; }
+      #topright { position: absolute; right: max(14px, env(safe-area-inset-right)); top: 10px; text-align: right; }
+      #clock { font-weight: 800; font-size: 16px; text-shadow: 0 2px 4px #000; opacity: .9; }
+      #money { font-weight: 900; font-size: 30px; color: #7CFC7C; text-shadow: 0 2px 0 #0b3d0b, 0 3px 8px rgba(0,0,0,.6); font-variant-numeric: tabular-nums; }
+      #stars { font-size: 26px; letter-spacing: 2px; color: rgba(255,255,255,.25); text-shadow: 0 2px 4px #000; }
+      #stars b { color: #ffd23f; font-weight: 400; }
+      #stars.flash b { animation: blink .5s steps(2) infinite; }
+      @keyframes blink { 50% { color: #fff; } }
+      #mission { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 8px 16px; border-radius: 12px; font-weight: 800; font-size: 15px; text-align: center; max-width: 52vw; display: none; backdrop-filter: blur(4px); }
+      #mission .t { color: #ffd36b; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+      #big { position: absolute; top: 34%; width: 100%; text-align: center; font-weight: 900; font-size: clamp(36px, 8vw, 84px); font-style: italic; letter-spacing: -1px; opacity: 0; transition: opacity .4s; text-shadow: 0 5px 0 #000, 0 8px 30px rgba(0,0,0,.6); }
+      #big small { display: block; font-size: .32em; letter-spacing: 2px; font-style: normal; }
+      #speed { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 34px; text-shadow: 0 3px 6px #000; display: none; font-variant-numeric: tabular-nums; }
+      #speed small { font-size: 14px; opacity: .8; }
+      #hint { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; opacity: 0; transition: opacity .3s; white-space: nowrap; }
+      #toast { position: absolute; top: 175px; left: max(12px, env(safe-area-inset-left)); background: var(--panel); padding: 6px 12px; border-radius: 10px; font-size: 13px; font-weight: 800; opacity: 0; transition: opacity .4s; }
+      #health { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 168px; width: 150px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.5); overflow: hidden; display: none; }
+      #health i { display: block; height: 100%; background: #4ade80; }
+      #pausebtn { position: absolute; right: max(14px, env(safe-area-inset-right)); top: 108px; pointer-events: auto; width: 40px; height: 40px; border-radius: 10px; border: 0; background: var(--panel); color: #fff; font-size: 18px; }
+
+      /* ---------------- touch controls */
+      #touch { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+      #stick { position: absolute; left: 40px; bottom: 40px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); }
+      #stick:not(.on) { left: max(28px, env(safe-area-inset-left)) !important; top: auto !important; bottom: 28px; }
+      #knob { position: absolute; left: 42px; top: 42px; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.55); }
+      #touch .btns { position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: 22px; display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; pointer-events: auto; }
+      #touch .b { width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); background: rgba(0,0,0,.35); color: #fff; font-size: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; }
+      #touch .b span { font-size: 9px; font-weight: 800; letter-spacing: .5px; margin-top: 1px; }
+      #touch .b.big { background: rgba(255,179,71,.55); }
+      #touch .b.down { background: rgba(255,255,255,.4); }
+      #touch:not(.car) [data-h="handbrake"], #touch:not(.car) [data-h="horn"], #touch:not(.car) [data-a="radio"] { opacity: .35; }
+
+      #rotate { display: none; position: fixed; inset: 0; z-index: 60; background: #120a1e; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 20px; padding: 24px; }
+      @media (orientation: portrait) and (max-width: 700px) { body.playing #rotate { display: flex; } }
+
+      #pause { position: fixed; inset: 0; z-index: 40; background: rgba(10,6,20,.75); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; }
+      #pause.on { display: flex; }
+      #pause h2 { margin: 0; font-size: 40px; font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="title">
+      <h1>ROTA SUL</h1>
+      <div class="sub">Mundo aberto • Porto Sol • Brasil</div>
+      <div id="loading">Carregando cidade…</div>
+      <div class="row" id="menu" style="display:none">
+        <button class="tbtn" id="play">▶ JOGAR</button>
+        <button class="tbtn alt" id="quality">Gráficos: ALTA</button>
+      </div>
+      <div class="help">
+        <b>Celular:</b> joystick à esquerda, arraste à direita para girar a câmera, 🚗 entra/sai do carro.<br />
+        <b>PC:</b> WASD anda/dirige • Shift corre • Espaço freio de mão • E entra/sai • H buzina • R rádio • arraste o mouse para olhar.<br />
+        Pegue as <b style="color:#ffd36b">missões (M)</b> no mapa, junte <b style="color:#7CFC7C">R$</b> e cuidado com a polícia ⭐
+      </div>
+    </div>
+    <div id="hud">
+      <canvas id="minimap" width="300" height="300"></canvas>
+      <div id="health"><i></i></div>
+      <div id="toast"></div>
+      <div id="topright"><div id="clock">17:36</div><div id="money">R$ 0</div><div id="stars"></div></div>
+      <button id="pausebtn">⏸</button>
+      <div id="mission"><div class="t"></div><div class="d"></div></div>
+      <div id="big"></div>
+      <div id="speed">0 <small>km/h</small></div>
+      <div id="hint"></div>
+    </div>
+    <div id="pause">
+      <h2>PAUSA</h2>
+      <button class="tbtn" id="resume">▶ Continuar</button>
+      <button class="tbtn alt" id="quality2">Gráficos: ALTA</button>
+    </div>
+    <div id="rotate">📱↻<br />Gire o celular para jogar deitado</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
