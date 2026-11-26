@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "reanimate": {
+      "source": "NiazMorshed2007/reanimate",
+      "commit": "3f7a55a2986a84ca2173e86ee9127eefe31d046d",
+      "sourceType": "github",
+      "skillPath": "skills/reanimate/SKILL.md",
+      "computedHash": "5c7f0f2362037d5a45ae799c54ae427631d797c2b8ce0c32cdfde111883b3e1c"
+    }
+  }
+}
