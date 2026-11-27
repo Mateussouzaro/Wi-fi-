@@ -101,8 +101,10 @@
       .ctrls button b { font-size: 22px; line-height: 1; }
       .ctrls button.main { background: rgba(255,210,63,.55); }
       .ctrls button.down { background: rgba(255,255,255,.45); }
-      #match.on ~ #stick, #city.on ~ #stick { display: block; }
-      #match.on ~ .ctrls.m { display: grid; }
+      #match.on ~ #stick, #city.on ~ #stick { display: block; opacity: .55; }
+      #stick.float { bottom: auto !important; opacity: 1 !important; }
+      @media (hover: hover) and (pointer: fine) { #match.on ~ .ctrls.m { display: grid; } }
+      #gestHint { position: absolute; bottom: calc(12px + env(safe-area-inset-bottom)); width: 100%; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: 1px; color: rgba(255,255,255,.75); text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 5; }
       #cityHud { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 5; gap: 8px; }
       #cityStatus { background: rgba(0,0,0,.6); padding: 8px 12px; border-radius: 10px; font-weight: 800; font-size: 13px; }
       #cityAsk { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%); display: none; z-index: 6; font-size: 18px; }
@@ -162,7 +164,8 @@
       body.pixel .badge { border-radius: 0 0 18px 18px; }
       body.pixel #hName { font-size: 15px; }
       body.pixel #hOvr { font-size: 24px; }
-      body.pixel #mScore { font-size: 12px; border: 3px solid #fff; }
+      body.pixel #mScore { font-size: 12px; border: 3px solid #fff; white-space: nowrap; }
+      @media (max-width: 480px) { body.pixel #mScore, body.pixel #mClock { font-size: 10px; padding: 6px 8px; } }
       body.pixel #mClock { font-size: 12px; border: 3px solid #111; }
       body.pixel #mBanner { font-style: normal; font-size: clamp(22px, 6vw, 48px); text-shadow: 4px 4px 0 #000; }
       body.pixel .ctrls button, body.pixel #stick, body.pixel #knob { border-radius: 0; border-width: 3px; font-size: 7px; }
@@ -180,8 +183,8 @@
       <div class="tag">Da várzea para o mundo</div>
       <h1>CRAQUE DA<span>VÁRZEA</span></h1>
       <div class="row"><button class="btn" id="tNew">▶ Novo jogo (modo história)</button><button class="btn alt" id="tCont">Continuar carreira</button></div>
-      <div class="row"><button class="btn alt" id="tStyle">Estilo: PIXEL</button><button class="btn alt" id="tQ">Gráficos: ALTA</button></div>
-      <p class="muted" style="max-width: 420px">Joystick para correr • segure <b>Chutar</b> para carregar o chute • <b>Passar</b>, <b>Desarme</b> e <b>Pedir</b> a bola. No PC: WASD, Espaço chuta, K passa, L desarma, C pede, Shift corre.</p>
+      <div class="row"><button class="btn alt" id="tStyle">Estilo: PIXEL</button><button class="btn alt" id="tOrient">Tela: AUTOMÁTICA</button><button class="btn alt" id="tQ">Gráficos: ALTA</button></div>
+      <p class="muted" style="max-width: 440px">Lado esquerdo: joystick (empurre tudo para arrancar). Lado direito: <b>arraste para mirar</b>, faça uma <b>curva</b> para dar efeito e <b>solte quando o círculo fechar</b>. Toque rápido = passe/desarme • segure parado = pedir a bola. PC: WASD, Espaço chuta, K passa, L desarma.</p>
     </div>
 
     <div id="dialog" class="screen" data-bg="varzea">
@@ -240,6 +243,7 @@
       <div class="mhud"><div id="mScore"></div><div id="mClock">0'</div></div>
       <div id="mBanner"></div>
       <div class="power"><div id="powerFill"></div></div>
+      <div id="gestHint">⟵ ANDAR &nbsp;&nbsp;|&nbsp;&nbsp; ARRASTAR · CURVAR · CHUTAR ⟶</div>
     </div>
 
     <div id="city" class="screen">

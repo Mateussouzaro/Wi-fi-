@@ -154,7 +154,26 @@ function fieldTexture(varzea: boolean) {
   return t;
 }
 
-export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement }, controls: { moveX: () => number; moveY: () => number; sprint: () => boolean; shootHeld: () => boolean; passPressed: () => boolean; tacklePressed: () => boolean; callPressed: () => boolean }): Promise<MatchResult> {
+// Drag gesture from the right side of the screen: aim + curl, released into a shot.
+export interface Gesture {
+  dx: number; // screen px, + right
+  dy: number; // screen px, + up
+  curl: number; // signed sideways bulge of the drag path, px
+  held: number; // seconds
+}
+export interface MatchControls {
+  moveX: () => number;
+  moveY: () => number;
+  sprint: () => boolean;
+  shootHeld: () => boolean;
+  passPressed: () => boolean;
+  tacklePressed: () => boolean;
+  callPressed: () => boolean;
+  aiming: () => Gesture | null; // finger still down
+  released: () => (Gesture & { tap: boolean; long: boolean }) | null; // consumed once
+}
+
+export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement }, controls: MatchControls): Promise<MatchResult> {
   return new Promise((resolve) => {
     const varzea = cfg.stadium === "varzea";
     const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel", powerPreference: "high-performance" });
@@ -362,6 +381,29 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       });
     }
     const user = players.find((p) => p.user)!;
+    // shrinking timing ring around the player (blue → white when it closes) and a dotted aim line
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x3fa9ff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+    const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), ringMat);
+    aimRing.rotation.x = -Math.PI / 2;
+    aimRing.visible = false;
+    scene.add(aimRing);
+    const aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4d6d, dashSize: 0.5, gapSize: 0.35, transparent: true, opacity: 0.95 }));
+    aimLine.visible = false;
+    aimLine.frustumCulled = false;
+    scene.add(aimLine);
+    let ballCurl = 0;
+    const SWEET = 0.62; // seconds until the ring is fully closed
+    const ringAt = (held: number) => (held < SWEET ? 1.9 - 1.45 * (held / SWEET) : 0.45 + Math.min(1.2, (held - SWEET) * 2.4));
+    const accuracyAt = (held: number) => THREE.MathUtils.clamp(1 - Math.abs(held - SWEET) / 0.42, 0, 1);
+    // maps a drag to a point in the goal mouth (can miss wide) and a curl amount
+    const aimFromGesture = (g: Gesture) => {
+      const ad = userTeam === 0 ? 1 : -1;
+      const side = THREE.MathUtils.clamp(g.dx / 160, -1.3, 1.3);
+      const power = THREE.MathUtils.clamp(Math.hypot(g.dx, g.dy) / 220, 0.35, 1.1);
+      const tz = side * ad * (GOAL_W / 2 + 0.6);
+      const ty = THREE.MathUtils.clamp(0.25 + (g.dy / 320) * 1.6, 0.2, 3.2);
+      return { target: new THREE.Vector3(goalX(userTeam), ty, tz), power, curl: THREE.MathUtils.clamp(g.curl / 90, -1, 1) * ad };
+    };
     const gk = (t: number) => players.find((p) => p.team === t && p.role === "GK")!;
 
     const res: MatchResult = { score: [...cfg.startScore] as [number, number], goals: 0, assists: 0, shots: 0, onTarget: 0, passes: 0, tackles: 0, lost: 0, rating: 6, minutes: 90 - cfg.startMinute };
@@ -400,6 +442,22 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       ball.lastTouch = p;
       p.noTouch = 0.35;
       return dist;
+    }
+
+    function dragShot(g: Gesture) {
+      const { target, power, curl } = aimFromGesture(g);
+      const acc = accuracyAt(g.held);
+      // error grows when the ring was not closed, shrinks with the shooting attribute
+      const err = (1 - acc) * (1.4 - user.shot) * 3.2;
+      target.z += (Math.random() - 0.5) * err * 2;
+      target.y = Math.max(0.15, target.y + (Math.random() - 0.4) * err);
+      const sp = 17 + 15 * power * (0.75 + user.shot * 0.4);
+      const dist = kick(user, target.clone().setZ(target.z - curl * 2.2), sp, 0);
+      ball.vel.y = Math.min(8, (target.y + 4.9 * Math.pow(dist / sp, 2)) / Math.max(0.1, dist / sp) - 0.5);
+      ballCurl = curl * 7;
+      res.shots++;
+      if (Math.abs(target.z) < GOAL_W / 2) res.onTarget++;
+      hud.banner(acc > 0.92 ? "PERFEITO!" : `${Math.round(acc * 100)}%`);
     }
 
     function shoot(p: P, power: number) {
@@ -486,7 +544,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const attackDir = userTeam === 0 ? 1 : -1;
       // screen up = attacking direction; right = toward −z for team 0 (camera behind)
       const want = new THREE.Vector3(my * attackDir, 0, mx * attackDir);
-      const sprint = controls.sprint() && user.stamina > 0.05;
+      const sprint = (controls.sprint() || Math.hypot(mx, my) > 0.9) && user.stamina > 0.05;
       user.stamina = THREE.MathUtils.clamp(user.stamina + (sprint && want.length() > 0.1 ? -dt * 0.18 : dt * 0.1), 0, 1);
       const uSpeed = user.speed * (sprint ? 1.3 : 0.92) * (ball.owner === user ? 0.9 : 1);
       if (want.length() > 0.08) user.vel.lerp(want.clone().normalize().multiplyScalar(uSpeed * Math.min(1, want.length())), Math.min(1, dt * 8));
@@ -514,6 +572,49 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           const o = ball.owner;
           if (o && o.team === userTeam && !o.user) pass(o, user);
         }
+        // touch gestures: drag+release = shot, tap = pass (with ball) or tackle (without), long press = ask for it
+        const g = controls.released();
+        if (g) {
+          if (ball.owner === user && !g.tap && !g.long) dragShot(g);
+          else if (ball.owner === user) {
+            const dirScreen = new THREE.Vector3(my * attackDir, 0, mx * attackDir);
+            const to = bestPass(user, dirScreen.length() > 0.1 ? dirScreen.normalize() : undefined);
+            if (to) pass(user, to);
+          } else if (g.long) {
+            const o = ball.owner;
+            if (o && o.team === userTeam && !o.user) pass(o, user);
+          } else {
+            const o = ball.owner;
+            if (o && o.team !== userTeam && o.pos.distanceTo(user.pos) < 2.4) {
+              if (Math.random() < 0.35 + user.tack * 0.5 - o.drib * 0.25) {
+                ball.owner = user;
+                res.tackles++;
+                hud.banner("DESARMOU!");
+              } else user.noTouch = 0.6;
+            } else if (!o) user.vel.add(ball.pos.clone().sub(user.pos).setY(0).normalize().multiplyScalar(4));
+          }
+        }
+      }
+      // aiming feedback while the finger is down
+      const aim = live && ball.owner === user ? controls.aiming() : null;
+      aimRing.visible = aimLine.visible = !!aim && Math.hypot(aim.dx, aim.dy) > 14;
+      if (aim && aimRing.visible) {
+        const rr = ringAt(aim.held);
+        aimRing.scale.setScalar(rr);
+        aimRing.position.set(user.pos.x, 0.05, user.pos.z);
+        ringMat.color.set(accuracyAt(aim.held) > 0.92 ? 0xffffff : 0x3fa9ff);
+        const { target, curl } = aimFromGesture(aim);
+        const pts: THREE.Vector3[] = [];
+        const a = ball.pos.clone();
+        const mid = a.clone().lerp(target, 0.5);
+        mid.z += curl * -2.2 * 0.5 + curl * 1.4;
+        mid.y = Math.max(mid.y, (target.y + a.y) / 2 + 0.6);
+        for (let i = 0; i <= 24; i++) {
+          const u = i / 24;
+          pts.push(new THREE.Vector3().addScaledVector(a, (1 - u) * (1 - u)).addScaledVector(mid, 2 * u * (1 - u)).addScaledVector(target, u * u));
+        }
+        aimLine.geometry.setFromPoints(pts);
+        aimLine.computeLineDistances();
       }
       hud.power.style.width = `${Math.min(100, (charge / 1.2) * 100)}%`;
       hud.power.parentElement!.style.opacity = charge > 0 ? "1" : "0";
@@ -635,6 +736,10 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           ball.vel.z *= Math.exp(-dt * 0.9);
         }
         ball.vel.multiplyScalar(Math.exp(-dt * 0.12));
+        if (Math.abs(ballCurl) > 0.01 && ball.vel.length() > 6) {
+          ball.vel.z += ballCurl * dt;
+          ballCurl *= Math.exp(-dt * 1.2);
+        } else ballCurl = 0;
         // pick-ups
         if (live)
           for (const p of players) {
@@ -759,10 +864,16 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       ballM.rotation.z -= ball.vel.x * dt * 3;
 
       // ---- camera: behind the user's player, looking toward the attacking goal
-      const focus = user.pos.clone().lerp(ball.pos, 0.35);
-      const camWant = focus.clone().add(new THREE.Vector3(-attackDir * 15, 12, 0));
+      const portrait = innerHeight > innerWidth;
+      const focus = user.pos.clone().lerp(ball.pos, portrait ? 0.2 : 0.35);
+      const camWant = focus.clone().add(portrait ? new THREE.Vector3(-attackDir * 7.5, 5.2, 0) : new THREE.Vector3(-attackDir * 15, 12, 0));
       camera.position.lerp(camWant, Math.min(1, dt * 4));
-      camera.lookAt(focus.x + attackDir * 9, 0, focus.z);
+      camera.lookAt(focus.x + attackDir * (portrait ? 11 : 9), portrait ? 0.9 : 0, focus.z);
+      const fov = portrait ? 66 : 55;
+      if (camera.fov !== fov) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
     }
 
     function finish() {

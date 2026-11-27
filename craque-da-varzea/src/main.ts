@@ -1,7 +1,7 @@
 import * as C from "./career";
 import { Save, club, overall, ATTRS, ATTR_LABEL, BOOTS } from "./career";
 import * as S from "./story";
-import { playMatch, MatchResult } from "./match";
+import { playMatch, MatchResult, Gesture } from "./match";
 import { walkCity } from "./city";
 import { getStyle, setStyle, Style } from "./pixel";
 import "@fontsource/press-start-2p/latin-400.css";
@@ -37,39 +37,7 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 {
-  const stick = $("stick"),
-    knob = $("knob");
-  let id: number | null = null,
-    sx = 0,
-    sy = 0;
-  stick.addEventListener("pointerdown", (e) => {
-    id = e.pointerId;
-    const r = stick.getBoundingClientRect();
-    sx = r.left + r.width / 2;
-    sy = r.top + r.height / 2;
-    stick.setPointerCapture(e.pointerId);
-  });
-  stick.addEventListener("pointermove", (e) => {
-    if (e.pointerId !== id) return;
-    let dx = e.clientX - sx,
-      dy = e.clientY - sy;
-    const l = Math.hypot(dx, dy),
-      R = 50;
-    if (l > R) {
-      dx = (dx / l) * R;
-      dy = (dy / l) * R;
-    }
-    knob.style.transform = `translate(${dx}px,${dy}px)`;
-    ctl.x = dx / R;
-    ctl.y = -dy / R;
-  });
-  const end = () => {
-    id = null;
-    ctl.x = ctl.y = 0;
-    knob.style.transform = "";
-  };
-  stick.addEventListener("pointerup", end);
-  stick.addEventListener("pointercancel", end);
+
   document.querySelectorAll<HTMLElement>("[data-hold],[data-tap]").forEach((b) => {
     b.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -85,6 +53,76 @@ addEventListener("keyup", (e) => keys.delete(e.code));
     b.addEventListener("pointercancel", off);
     b.addEventListener("pointerleave", off);
   });
+}
+// Floating joystick (left side) and drag-to-shoot gestures (right side), like modern mobile football games.
+const gest = { active: false, id: -1, sx: 0, sy: 0, t0: 0, pts: [] as [number, number][], done: null as (Gesture & { tap: boolean; long: boolean }) | null };
+function gestureOf(pts: [number, number][], t0: number): Gesture {
+  const [sx, sy] = pts[0];
+  const [ex, ey] = pts[pts.length - 1];
+  const cx = ex - sx,
+    cy = ey - sy;
+  const cl = Math.hypot(cx, cy) || 1;
+  let curl = 0;
+  for (const [x, y] of pts) {
+    const perp = (cx * (y - sy) - cy * (x - sx)) / cl; // screen-space signed distance from the chord
+    if (Math.abs(perp) > Math.abs(curl)) curl = perp;
+  }
+  return { dx: cx, dy: -cy, curl: -curl, held: (performance.now() - t0) / 1000 };
+}
+{
+  const zone = document.body;
+  const stick = $("stick"),
+    knob = $("knob");
+  let jid: number | null = null,
+    jx = 0,
+    jy = 0;
+  const inPlay = () => $("match").classList.contains("on") || $("city").classList.contains("on");
+  zone.addEventListener("pointerdown", (e) => {
+    if (!inPlay() || (e.target as HTMLElement).closest("button")) return;
+    if (e.clientX < innerWidth * 0.45 && jid === null) {
+      jid = e.pointerId;
+      jx = e.clientX;
+      jy = e.clientY;
+      stick.style.left = `${jx - 65}px`;
+      stick.style.top = `${jy - 65}px`;
+      stick.classList.add("float");
+    } else if (!gest.active && $("match").classList.contains("on")) {
+      gest.active = true;
+      gest.id = e.pointerId;
+      gest.t0 = performance.now();
+      gest.pts = [[e.clientX, e.clientY]];
+    }
+  });
+  zone.addEventListener("pointermove", (e) => {
+    if (e.pointerId === jid) {
+      let dx = e.clientX - jx,
+        dy = e.clientY - jy;
+      const l = Math.hypot(dx, dy),
+        R = 55;
+      if (l > R) {
+        dx = (dx / l) * R;
+        dy = (dy / l) * R;
+      }
+      knob.style.transform = `translate(${dx}px,${dy}px)`;
+      ctl.x = dx / R;
+      ctl.y = -dy / R;
+    } else if (gest.active && e.pointerId === gest.id) gest.pts.push([e.clientX, e.clientY]);
+  });
+  const up = (e: PointerEvent) => {
+    if (e.pointerId === jid) {
+      jid = null;
+      ctl.x = ctl.y = 0;
+      knob.style.transform = "";
+      stick.classList.remove("float");
+    } else if (gest.active && e.pointerId === gest.id) {
+      gest.active = false;
+      const g = gestureOf(gest.pts, gest.t0);
+      const d = Math.hypot(g.dx, g.dy);
+      gest.done = { ...g, tap: d < 16 && g.held < 0.35, long: d < 16 && g.held >= 0.35 };
+    }
+  };
+  zone.addEventListener("pointerup", up);
+  zone.addEventListener("pointercancel", up);
 }
 const kx = () => ctl.x || (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
 const ky = () => ctl.y || (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
@@ -219,6 +257,12 @@ const matchControls = {
   passPressed: () => take("pass"),
   tacklePressed: () => take("tackle"),
   callPressed: () => take("call"),
+  aiming: () => (gest.active && gest.pts.length ? gestureOf(gest.pts, gest.t0) : null),
+  released: () => {
+    const g = gest.done;
+    gest.done = null;
+    return g;
+  },
 };
 
 async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number, number], realSec: number, stadium: "varzea" | "estadio", banner?: string): Promise<MatchResult> {
@@ -827,6 +871,34 @@ $("tQ").addEventListener("click", () => {
   $("tQ").textContent = `Gráficos: ${quality.toUpperCase()}`;
 });
 $("hMenu").addEventListener("click", () => show("title"));
+type Orient = "auto" | "vertical" | "horizontal";
+let orient: Orient = (() => {
+  try {
+    return (localStorage.getItem("craque.orient") as Orient) || "auto";
+  } catch {
+    return "auto";
+  }
+})();
+const ORIENT_LABEL: Record<Orient, string> = { auto: "AUTOMÁTICA", vertical: "VERTICAL", horizontal: "HORIZONTAL" };
+function applyOrientation() {
+  $("tOrient").textContent = `Tela: ${ORIENT_LABEL[orient]}`;
+  const bridge = (window as unknown as { Android?: { setOrientation: (o: string) => void } }).Android;
+  if (bridge) bridge.setOrientation(orient);
+  else if (orient !== "auto") {
+    const so = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+    document.documentElement.requestFullscreen?.().then(() => so.lock?.(orient === "vertical" ? "portrait" : "landscape")).catch(() => {});
+  }
+}
+$("tOrient").addEventListener("click", () => {
+  orient = orient === "auto" ? "vertical" : orient === "vertical" ? "horizontal" : "auto";
+  try {
+    localStorage.setItem("craque.orient", orient);
+  } catch {
+    /* ignore */
+  }
+  applyOrientation();
+});
+applyOrientation();
 $("tStyle").textContent = `Estilo: ${style === "pixel" ? "PIXEL" : "3D"}`;
 $("tStyle").addEventListener("click", () => {
   style = style === "pixel" ? "3d" : "pixel";

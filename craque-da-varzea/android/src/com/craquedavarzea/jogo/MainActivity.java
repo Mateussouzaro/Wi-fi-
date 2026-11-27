@@ -5,6 +5,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.content.pm.ActivityInfo;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -28,6 +30,20 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient());
         web.setWebChromeClient(new WebChromeClient());
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // lets the game switch between portrait and landscape from its settings
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void setOrientation(final String o) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if ("vertical".equals(o)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+                        else if ("horizontal".equals(o)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                        else setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
+                    }
+                });
+            }
+        }, "Android");
         setContentView(web);
         hideBars();
         web.loadUrl("file:///android_asset/index.html");
