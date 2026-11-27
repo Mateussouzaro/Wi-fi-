@@ -144,6 +144,34 @@
       .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
       .bar i { display: block; height: 100%; background: linear-gradient(90deg, #4ade80, var(--gold)); }
       .awards { margin: 0; padding-left: 18px; line-height: 1.7; }
+      /* ---------------- pixel-art theme */
+      body.pixel, body.pixel button, body.pixel input { font-family: "Press Start 2P", ui-monospace, monospace; letter-spacing: 0; }
+      body.pixel { font-size: 11px; line-height: 1.6; image-rendering: pixelated; }
+      body.pixel .btn { border-radius: 0; font-size: 10px; line-height: 1.5; padding: 12px 12px; box-shadow: 0 0 0 3px #10210f, 4px 4px 0 3px #10210f; font-weight: 400; }
+      body.pixel .btn:active { transform: translate(3px, 3px); box-shadow: 0 0 0 3px #10210f, 1px 1px 0 3px #10210f; }
+      body.pixel .btn.alt { background: #2b5a3a; color: #fff; }
+      body.pixel .btn small, body.pixel .muted, body.pixel small { font-size: 8px; line-height: 1.6; }
+      body.pixel #title h1 { font-style: normal; font-size: clamp(30px, 8vw, 64px); line-height: 1.15; letter-spacing: 0; text-shadow: 4px 4px 0 #0b3d2e, 8px 8px 0 rgba(0,0,0,.35); }
+      body.pixel #title .tag { font-size: 9px; letter-spacing: 2px; }
+      body.pixel .ball { animation: spin 1.2s steps(8) infinite; }
+      body.pixel #dialog .box, body.pixel #modal .panel, body.pixel #create .panel { border-radius: 0; border: 4px solid #fff; box-shadow: 6px 6px 0 rgba(0,0,0,.5); }
+      body.pixel #dFace { border-radius: 0; }
+      body.pixel #dWho { font-size: 12px; }
+      body.pixel #dText { font-size: 11px; line-height: 1.8; }
+      body.pixel .stat, body.pixel .card, body.pixel .next, body.pixel .swatch, body.pixel #create input, body.pixel .badge, body.pixel .chip, body.pixel .meter, body.pixel .meter i, body.pixel .bar, body.pixel .bar i, body.pixel .tbar, body.pixel #mScore, body.pixel #mClock, body.pixel .power, body.pixel #cityStatus { border-radius: 0; }
+      body.pixel .badge { border-radius: 0 0 18px 18px; }
+      body.pixel #hName { font-size: 15px; }
+      body.pixel #hOvr { font-size: 24px; }
+      body.pixel #mScore { font-size: 12px; border: 3px solid #fff; }
+      body.pixel #mClock { font-size: 12px; border: 3px solid #111; }
+      body.pixel #mBanner { font-style: normal; font-size: clamp(22px, 6vw, 48px); text-shadow: 4px 4px 0 #000; }
+      body.pixel .ctrls button, body.pixel #stick, body.pixel #knob { border-radius: 0; border-width: 3px; font-size: 7px; }
+      body.pixel .ctrls button b { font-size: 18px; }
+      body.pixel .ctrls button.main { border-radius: 0 !important; }
+      body.pixel .score.big { font-size: 34px; }
+      body.pixel .q { font-size: 12px; line-height: 1.8; }
+      body.pixel table { font-size: 9px; }
+      body.pixel #mTitle { font-style: normal; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -152,7 +180,7 @@
       <div class="tag">Da várzea para o mundo</div>
       <h1>CRAQUE DA<span>VÁRZEA</span></h1>
       <div class="row"><button class="btn" id="tNew">▶ Novo jogo (modo história)</button><button class="btn alt" id="tCont">Continuar carreira</button></div>
-      <button class="btn alt" id="tQ">Gráficos: ALTA</button>
+      <div class="row"><button class="btn alt" id="tStyle">Estilo: PIXEL</button><button class="btn alt" id="tQ">Gráficos: ALTA</button></div>
       <p class="muted" style="max-width: 420px">Joystick para correr • segure <b>Chutar</b> para carregar o chute • <b>Passar</b>, <b>Desarme</b> e <b>Pedir</b> a bola. No PC: WASD, Espaço chuta, K passa, L desarma, C pede, Shift corre.</p>
     </div>
 

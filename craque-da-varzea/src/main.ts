@@ -3,6 +3,8 @@ import { Save, club, overall, ATTRS, ATTR_LABEL, BOOTS } from "./career";
 import * as S from "./story";
 import { playMatch, MatchResult } from "./match";
 import { walkCity } from "./city";
+import { getStyle, setStyle, Style } from "./pixel";
+import "@fontsource/press-start-2p/latin-400.css";
 
 const $ = (id: string) => document.getElementById(id)!;
 const qPref = (() => {
@@ -14,6 +16,8 @@ const qPref = (() => {
 })();
 let quality: "alta" | "baixa" = qPref ? (qPref as "alta" | "baixa") : /Android|iPhone|iPad/i.test(navigator.userAgent) ? "baixa" : "alta";
 let s: Save = C.load() ?? C.newSave();
+let style: Style = getStyle();
+document.body.classList.toggle("pixel", style === "pixel");
 const persist = () => C.save(s);
 const money = (v: number) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`;
 const hex = (c: number) => "#" + c.toString(16).padStart(6, "0");
@@ -232,6 +236,7 @@ async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number
     realSeconds: realSec,
     stadium,
     quality,
+    style,
     banner,
   }, matchHud(), matchControls).then((r) => {
     // normalise the score so index 0 is always "my team"
@@ -623,7 +628,7 @@ async function city() {
   $("cityAsk").onclick = () => (walkCity as unknown as { ask: () => void }).ask();
   const res = await walkCity(
     $("cityStage"),
-    { look: s.look, shirt: club(s.contract.clubId).c1, fame: s.fame, quality },
+    { look: s.look, shirt: club(s.contract.clubId).c1, fame: s.fame, quality, style },
     { moveX: kx, moveY: ky, prompt: (v) => $("cityAsk").classList.toggle("on", v), done: () => done, status: (t) => ($("cityStatus").textContent = t) },
     async () => {
       const choice = await new Promise<"sign" | "selfie" | "skip">((resolve) => {
@@ -822,5 +827,12 @@ $("tQ").addEventListener("click", () => {
   $("tQ").textContent = `Gráficos: ${quality.toUpperCase()}`;
 });
 $("hMenu").addEventListener("click", () => show("title"));
+$("tStyle").textContent = `Estilo: ${style === "pixel" ? "PIXEL" : "3D"}`;
+$("tStyle").addEventListener("click", () => {
+  style = style === "pixel" ? "3d" : "pixel";
+  setStyle(style);
+  document.body.classList.toggle("pixel", style === "pixel");
+  $("tStyle").textContent = `Estilo: ${style === "pixel" ? "PIXEL" : "3D"}`;
+});
 show("title");
 (window as unknown as Record<string, unknown>).__craque = { get s() { return s; }, hub, prologue };

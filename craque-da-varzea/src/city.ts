@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { makeView, Style } from "./pixel";
 import { makeHuman, animateHuman, HumanMesh, rng } from "./people";
 
 // A short walk around the neighbourhood: fans recognise the player and ask for autographs.
@@ -8,6 +9,7 @@ export interface CityCfg {
   shirt: number;
   fame: number;
   quality: "alta" | "baixa";
+  style: Style;
 }
 
 interface Fan {
@@ -49,7 +51,7 @@ function bubbleSprite(txt: string) {
 
 export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => number; moveY: () => number; prompt: (show: boolean) => void; done: () => boolean; status: (t: string) => void }, onFan: () => Promise<"sign" | "selfie" | "skip">) {
   return new Promise<{ autographs: number; selfies: number }>((resolve) => {
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel" });
     renderer.setPixelRatio(Math.min(devicePixelRatio, cfg.quality === "alta" ? 1.75 : 1));
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -60,6 +62,9 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
     scene.background = new THREE.Color(0x9fd3f0);
     scene.fog = new THREE.Fog(0x9fd3f0, 60, 160);
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
+    const view = makeView(renderer, scene, camera, cfg.style, cfg.quality);
+    const onResize = () => view.resize();
+    addEventListener("resize", onResize);
     const sun = new THREE.DirectionalLight(0xfff0dd, 2.6);
     sun.position.set(20, 40, 15);
     sun.castShadow = true;
@@ -131,6 +136,7 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
       if (io.done() && !finished) {
         finished = true;
         cancelAnimationFrame(raf);
+        removeEventListener("resize", onResize);
         renderer.dispose();
         renderer.domElement.remove();
         resolve({ autographs, selfies });
@@ -220,7 +226,7 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
       const back = new THREE.Vector3(Math.sin(camYaw), 0, Math.cos(camYaw)).multiplyScalar(7);
       camera.position.lerp(pos.clone().add(back).add(new THREE.Vector3(0, 4.2, 0)), Math.min(1, dt * 5));
       camera.lookAt(pos.x, 1.3, pos.z);
-      renderer.render(scene, camera);
+      view.render();
     }
     let camYaw = 0;
     let pendingAsk = false;

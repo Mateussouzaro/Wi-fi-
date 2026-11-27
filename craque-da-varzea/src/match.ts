@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { makeView, Style } from "./pixel";
 import { makeHuman, animateHuman, HumanMesh, rng } from "./people";
 
 // 7-a-side 3D match. The user controls one player; everyone else is AI.
@@ -29,6 +30,7 @@ export interface MatchCfg {
   realSeconds: number; // real duration of the remaining minutes
   stadium: "varzea" | "estadio";
   quality: "alta" | "baixa";
+  style: Style;
   banner?: string;
 }
 export interface MatchResult {
@@ -155,7 +157,7 @@ function fieldTexture(varzea: boolean) {
 export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement }, controls: { moveX: () => number; moveY: () => number; sprint: () => boolean; shootHeld: () => boolean; passPressed: () => boolean; tacklePressed: () => boolean; callPressed: () => boolean }): Promise<MatchResult> {
   return new Promise((resolve) => {
     const varzea = cfg.stadium === "varzea";
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel", powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(devicePixelRatio, cfg.quality === "alta" ? 1.75 : 1));
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -166,6 +168,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     scene.background = new THREE.Color(varzea ? 0x9fd3f0 : 0x0b1a2e);
     scene.fog = new THREE.Fog(scene.background as THREE.Color, 120, 320);
     const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+    const view = makeView(renderer, scene, camera, cfg.style, cfg.quality);
     const sun = new THREE.DirectionalLight(0xffffff, varzea ? 2.6 : 1.8);
     sun.position.set(30, 60, 20);
     sun.castShadow = true;
@@ -463,7 +466,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       step(dt, now / 1000);
-      renderer.render(scene, camera);
+      view.render();
     }
     function step(dt: number, t: number) {
       if (ended) return;
@@ -772,21 +775,18 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       hud.banner("FIM DE JOGO", `${cfg.home.short} ${res.score[0]} × ${res.score[1]} ${cfg.away.short}`);
       setTimeout(() => {
         cancelAnimationFrame(raf);
+        removeEventListener("resize", onResize);
         renderer.dispose();
         renderer.domElement.remove();
         resolve(res);
       }, 2600);
     }
 
-    const onResize = () => {
-      renderer.setSize(innerWidth, innerHeight);
-      camera.aspect = innerWidth / innerHeight;
-      camera.updateProjectionMatrix();
-    };
+    const onResize = () => view.resize();
     addEventListener("resize", onResize);
     camera.position.set(-15, 12, 0);
     raf = requestAnimationFrame(frame);
     if (cfg.banner) hud.banner(cfg.banner);
-    (window as unknown as Record<string, unknown>).__match = { step: (dt: number) => { step(dt, performance.now() / 1000); renderer.render(scene, camera); }, res, ball, players, stop: () => cancelAnimationFrame(raf), skip: () => (minute = 89.95) };
+    (window as unknown as Record<string, unknown>).__match = { step: (dt: number) => { step(dt, performance.now() / 1000); view.render(); }, res, ball, players, stop: () => cancelAnimationFrame(raf), skip: () => (minute = 89.95) };
   });
 }
