@@ -5357,7 +5357,19 @@ local ServerStorage = game:GetService("ServerStorage")
 -- each car are tagged once here, before the spawner copies the cars for its menu
 local CatalogoV = require(ReplicatedStorage:WaitForChild("Catalogo"))
 local vehicles = ServerStorage:WaitForChild("Vehicles")
+-- some cars came with their physics joints set to Visible (blue circles and arrows in the
+-- game) and "install guide" pictures on the wheels: hide/remove those helpers
+local function hideHelpers(root)
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("Constraint") or d:IsA("Attachment") then
+			d.Visible = false
+		elseif (d:IsA("Decal") or d:IsA("Texture")) and d.Name == "Install_Guide" then
+			d:Destroy()
+		end
+	end
+end
 for _, v in ipairs(vehicles:GetChildren()) do
+	hideHelpers(v)
 	local info = CatalogoV.info(v.Name)
 	v:SetAttribute("CarCategory", info and info.categoria or "Populares")
 	local n = CatalogoV.marcarPintura(v)
@@ -5389,6 +5401,8 @@ local function showcase(cf, index, name)
 		elseif d:IsA("BasePart") then
 			d.Anchored = true
 			if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = true end
+			-- suspension guide parts are hidden by the chassis scripts, which parked cars do not run
+			if d:FindFirstAncestor("SuspensionGeometry") then d.Transparency = 1 end
 		end
 	end
 	local seat = m:FindFirstChild("DriveSeat")
@@ -6620,6 +6634,10 @@ local sitOnSpawn = {}
 CarroSpawnado.Event:Connect(function(plr, car)
 	if not (plr and car) then return end
 	car:SetAttribute("Dono", plr.UserId)
+	-- joints the chassis creates later must stay invisible too
+	car.DescendantAdded:Connect(function(d)
+		if d:IsA("Constraint") or d:IsA("Attachment") then d.Visible = false end
+	end)
 	local d = data[plr]
 	local ci = d and d.cores[car.Name]
 	if ci and ci > 0 then Catalogo.pintar(car, ci) end
