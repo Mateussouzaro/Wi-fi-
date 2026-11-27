@@ -36,6 +36,17 @@
 
       /* ---- dialogue */
       #dialog { align-items: flex-end; justify-content: center; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); background: linear-gradient(#7ec8f0, #cfe9f5 45%, #9c7a4a 46%, #8a6a40); }
+      #dStage { position: absolute; inset: 0; z-index: 0; display: none; }
+      #dStage canvas { display: block; width: 100%; height: 100%; }
+      #dialog.cine { background: #000; }
+      #dialog.cine #dStage { display: block; }
+      #dialog .box { position: relative; z-index: 2; }
+      #dSkip { display: none; position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 12px; z-index: 3; padding: 8px 12px; font-size: 12px; }
+      #dialog.cine #dSkip { display: block; }
+      #dialog.cine::before, #dialog.cine::after { content: ""; position: absolute; left: 0; right: 0; height: 5vh; background: #000; z-index: 1; pointer-events: none; }
+      #dialog.cine::before { top: 0; }
+      #dialog.cine::after { bottom: 0; }
+      #dialog.cine .box { background: rgba(10,14,20,.82); }
       #dialog[data-bg="ceari"] { background: linear-gradient(#0b1a2e, #13304d 45%, #2e7d32 46%, #1f6a2a); }
       #dialog[data-bg="cidade"] { background: linear-gradient(#ffb347, #ff8a65 40%, #8d99ae 41%, #5c677d); }
       #dialog .box { width: min(720px, 100%); background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 16px; display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start; }
@@ -218,6 +229,8 @@
     </div>
 
     <div id="dialog" class="screen" data-bg="varzea">
+      <div id="dStage"></div>
+      <button class="btn alt" id="dSkip">Pular ⏭</button>
       <div class="box"><div id="dFace">🧢</div><div><div id="dWho"></div><div id="dText"></div></div><button class="btn" id="dNext">Continuar ▶</button></div>
     </div>
 

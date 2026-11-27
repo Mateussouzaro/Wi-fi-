@@ -5,6 +5,8 @@ export interface Line {
   text: string;
   face?: string; // emoji portrait
   color?: string;
+  shot?: string; // cutscene camera shot for this line
+  voice?: string; // narration clip id (src/voice.ts)
 }
 
 export const CAST: Record<string, { face: string; color: string; role: string }> = {
@@ -20,38 +22,38 @@ export const CAST: Record<string, { face: string; color: string; role: string }>
 };
 
 export const PROLOGUE: Line[] = [
-  { who: "Narrador", text: "Domingo de sol no Campinho do Jardim Esperança. É a final da Copa da Várzea: Unidos da Vila contra o Ferroviário do Morro!" },
-  { who: "Narrador", text: "O Ferroviário abriu o placar no primeiro tempo. O Unidos precisa reagir… e você está lá, sentado no banco de madeira, esperando uma chance." },
-  { who: "Seu Nonato", text: "Calma, moleque. Teu dia vai chegar. Fica atento que o jogo tá pegado." },
-  { who: "Narrador", text: "Aos 59 minutos, Tião sobe para cabecear e cai mal… o centroavante está no chão!" },
-  { who: "Tião", text: "Aaai! Não dá, professor… o tornozelo virou." },
-  { who: "Seu Nonato", text: "Ô moleque! Aquece aí que você vai entrar! Como é teu nome mesmo?" },
+  { voice: "pro0", shot: "wide", who: "Narrador", text: "Domingo de sol no Campinho do Jardim Esperança. É a final da Copa da Várzea: Unidos da Vila contra o Ferroviário do Morro!" },
+  { voice: "pro1", shot: "bench", who: "Narrador", text: "O Ferroviário abriu o placar no primeiro tempo. O Unidos precisa reagir… e você está lá, sentado no banco de madeira, esperando uma chance." },
+  { voice: "pro2", shot: "coach", who: "Seu Nonato", text: "Calma, moleque. Teu dia vai chegar. Fica atento que o jogo tá pegado." },
+  { voice: "pro3", shot: "injury", who: "Narrador", text: "Aos 59 minutos, Tião sobe para cabecear e cai mal… o centroavante está no chão!" },
+  { voice: "pro4", shot: "tiao", who: "Tião", text: "Aaai! Não dá, professor… o tornozelo virou." },
+  { voice: "pro5", shot: "callup", who: "Seu Nonato", text: "Ô moleque! Aquece aí que você vai entrar! Como é teu nome mesmo?" },
 ];
 
 export const PRE_MATCH: Line[] = [
-  { who: "Seu Nonato", text: "{nome}, é contigo agora. Faltam 30 minutos e a gente tá perdendo de 1 a 0. Joga solto, faz o que você sabe!" },
-  { who: "Narrador", text: "Entra em campo o camisa {numero}… quem é esse garoto? A torcida da Vila quer saber!" },
+  { voice: "pre0", shot: "sub", who: "Seu Nonato", text: "{nome}, é contigo agora. Faltam 30 minutos e a gente tá perdendo de 1 a 0. Joga solto, faz o que você sabe!" },
+  { voice: "pre1", shot: "enter", who: "Narrador", text: "Entra em campo o camisa {numero}… quem é esse garoto? A torcida da Vila quer saber!" },
 ];
 
 export const SCOUT_GOOD: Line[] = [
-  { who: "Narrador", text: "Fim de jogo no Jardim Esperança! E que estreia do garoto {nome}!" },
-  { who: "Wagner Lima", text: "Ei, garoto! Posso falar contigo um minuto? Meu nome é Wagner Lima, sou olheiro do Ceari Sporting Clube." },
-  { who: "Wagner Lima", text: "Vinte anos rodando várzea e eu nunca vi um moleque entrar no segundo tempo e mudar um jogo desse jeito." },
-  { who: "Wagner Lima", text: "O Ceari tá montando o time pra Série B. Quero você lá na peneira segunda-feira. Se for bem, assina contrato." },
-  { who: "Mãe", text: "Filho… é o Ceari! Vai, meu filho. Eu sempre soube." },
-  { who: "Narrador", text: "Na segunda-feira, você brilhou na peneira. O Ceari ofereceu o seu primeiro contrato profissional!" },
+  { voice: "sg0", shot: "final", who: "Narrador", text: "Fim de jogo no Jardim Esperança! E que estreia do garoto {nome}!" },
+  { voice: "sg1", shot: "scout", who: "Wagner Lima", text: "Ei, garoto! Posso falar contigo um minuto? Meu nome é Wagner Lima, sou olheiro do Ceari Sporting Clube." },
+  { voice: "sg2", shot: "scout2", who: "Wagner Lima", text: "Vinte anos rodando várzea e eu nunca vi um moleque entrar no segundo tempo e mudar um jogo desse jeito." },
+  { voice: "sg3", shot: "scout3", who: "Wagner Lima", text: "O Ceari tá montando o time pra Série B. Quero você lá na peneira segunda-feira. Se for bem, assina contrato." },
+  { voice: "sg4", shot: "mae", who: "Mãe", text: "Filho… é o Ceari! Vai, meu filho. Eu sempre soube." },
+  { voice: "sg5", shot: "sunset", who: "Narrador", text: "Na segunda-feira, você brilhou na peneira. O Ceari ofereceu o seu primeiro contrato profissional!" },
 ];
 export const SCOUT_OK: Line[] = [
-  { who: "Narrador", text: "Fim de jogo. O resultado não veio, mas alguém na beira do campo prestou atenção em {nome}." },
-  { who: "Wagner Lima", text: "Garoto, sou Wagner Lima, olheiro do Ceari. O placar não ajudou, mas eu vi coisa boa em você." },
-  { who: "Wagner Lima", text: "Tem talento cru aí. O Ceari tá precisando de molecada com fome. Aparece na peneira segunda." },
-  { who: "Mãe", text: "Vai, filho. Uma chance dessa não aparece duas vezes." },
-  { who: "Narrador", text: "Na peneira, você deu tudo e convenceu a comissão técnica. O Ceari ofereceu o seu primeiro contrato!" },
+  { voice: "so0", shot: "final", who: "Narrador", text: "Fim de jogo. O resultado não veio, mas alguém na beira do campo prestou atenção em {nome}." },
+  { voice: "so1", shot: "scout", who: "Wagner Lima", text: "Garoto, sou Wagner Lima, olheiro do Ceari. O placar não ajudou, mas eu vi coisa boa em você." },
+  { voice: "so2", shot: "scout2", who: "Wagner Lima", text: "Tem talento cru aí. O Ceari tá precisando de molecada com fome. Aparece na peneira segunda." },
+  { voice: "so3", shot: "mae", who: "Mãe", text: "Vai, filho. Uma chance dessa não aparece duas vezes." },
+  { voice: "so4", shot: "sunset", who: "Narrador", text: "Na peneira, você deu tudo e convenceu a comissão técnica. O Ceari ofereceu o seu primeiro contrato!" },
 ];
 
 export const CEARI_WELCOME: Line[] = [
-  { who: "Prof. Ademir", text: "Seja bem-vindo ao Ceari, {nome}. Aqui ninguém tem lugar garantido. Você começa no banco e vai ter que ganhar a vaga no treino." },
-  { who: "Prof. Ademir", text: "Treina, descansa e quando eu te chamar, entra e resolve. Entendido?" },
+  { voice: "ce0", shot: "ceari", who: "Prof. Ademir", text: "Seja bem-vindo ao Ceari, {nome}. Aqui ninguém tem lugar garantido. Você começa no banco e vai ter que ganhar a vaga no treino." },
+  { voice: "ce1", shot: "ceari2", who: "Prof. Ademir", text: "Treina, descansa e quando eu te chamar, entra e resolve. Entendido?" },
 ];
 
 export const AGENT_INTRO: Line[] = [

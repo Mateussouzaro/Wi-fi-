@@ -3,6 +3,8 @@ import { Save, club, overall, ATTRS, ATTR_LABEL, BOOTS } from "./career";
 import * as S from "./story";
 import { playMatch, MatchResult, Gesture, Choice } from "./match";
 import { walkCity } from "./city";
+import { startCutscene, Shot } from "./cutscene";
+import { VOICE } from "./voice";
 import { getStyle, setStyle, Style } from "./pixel";
 import "@fontsource/press-start-2p/latin-400.css";
 
@@ -138,11 +140,56 @@ const take = (k: string) => {
 function fill(t: string) {
   return t.replace(/\{nome\}/g, s.name || "garoto").replace(/\{numero\}/g, String(s.number));
 }
+// Crowd murmur under the cutscenes (filtered noise, no audio files needed).
+let crowdAmb: { stop: () => void } | null = null;
+function crowdAmbience(on: boolean) {
+  if (!on) {
+    crowdAmb?.stop();
+    crowdAmb = null;
+    return;
+  }
+  if (crowdAmb) return;
+  try {
+    const ac = new AudioContext();
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    let b = 0;
+    for (let i = 0; i < d.length; i++) {
+      b = (b + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      d[i] = b * 3.5;
+    }
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const f = ac.createBiquadFilter();
+    f.type = "bandpass";
+    f.frequency.value = 700;
+    f.Q.value = 0.6;
+    const g = ac.createGain();
+    g.gain.value = 0.0;
+    g.gain.linearRampToValueAtTime(0.16, ac.currentTime + 1.5);
+    src.connect(f).connect(g).connect(ac.destination);
+    src.start();
+    crowdAmb = { stop: () => { g.gain.linearRampToValueAtTime(0, ac.currentTime + 0.5); setTimeout(() => ac.close(), 700); } };
+  } catch {
+    /* no audio */
+  }
+}
+
+// Story dialogue. Lines that name a shot play as a little clip: the 3D pixel scene
+// behind the text box, the narration voice, and auto-advance when the line is spoken.
 function dialogue(lines: S.Line[], bg = "varzea") {
   return new Promise<void>((resolve) => {
     show("dialog");
     $("dialog").dataset.bg = bg;
+    const cine = lines.some((l) => l.shot);
+    $("dialog").classList.toggle("cine", cine);
+    const me = lines === S.PROLOGUE ? null : { look: s.look, number: s.number };
+    const cs = cine ? startCutscene($("dStage"), style, quality, me, bg !== "ceari") : null;
+    if (cine) crowdAmbience(true);
+    const voice = new Audio();
     let i = 0;
+    let auto = 0;
     const render = () => {
       const l = lines[i];
       const who = S.CAST[l.who];
@@ -153,13 +200,37 @@ function dialogue(lines: S.Line[], bg = "varzea") {
       $("dText").classList.remove("type");
       void $("dText").offsetWidth;
       $("dText").classList.add("type");
+      if (cs && l.shot) cs.setShot(l.shot as Shot);
+      clearTimeout(auto);
+      voice.pause();
+      if (l.voice && VOICE[l.voice]) {
+        const at = i;
+        voice.src = VOICE[l.voice];
+        voice.onended = () => {
+          auto = window.setTimeout(() => at === i && next(), 1300);
+        };
+        voice.play().catch(() => {
+          /* autoplay blocked: the player taps Continuar */
+        });
+      }
     };
-    render();
-    $("dNext").onclick = () => {
+    const finish = () => {
+      clearTimeout(auto);
+      voice.pause();
+      voice.src = "";
+      cs?.dispose();
+      if (cine) crowdAmbience(false);
+      $("dialog").classList.remove("cine");
+      resolve();
+    };
+    const next = () => {
       i++;
-      if (i >= lines.length) resolve();
+      if (i >= lines.length) finish();
       else render();
     };
+    render();
+    $("dNext").onclick = next;
+    $("dSkip").onclick = finish;
   });
 }
 
@@ -1019,4 +1090,4 @@ $("tStyle").addEventListener("click", () => {
   $("tStyle").textContent = `Estilo: ${style === "pixel" ? "PIXEL" : "3D"}`;
 });
 show("title");
-(window as unknown as Record<string, unknown>).__craque = { get s() { return s; }, hub, prologue };
+(window as unknown as Record<string, unknown>).__craque = { get s() { return s; }, hub, prologue, dialogue, S };

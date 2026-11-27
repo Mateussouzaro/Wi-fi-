@@ -24,6 +24,7 @@ public class MainActivity extends Activity {
         web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
