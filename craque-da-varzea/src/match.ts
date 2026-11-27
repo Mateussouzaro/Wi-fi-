@@ -87,6 +87,7 @@ interface P {
   keep: number;
   user: boolean;
   noTouch: number;
+  down?: number;
   think: number;
   stamina: number;
   tag?: THREE.Sprite;
@@ -170,6 +171,8 @@ export interface Gesture {
   dy: number; // screen px, + up
   curl: number; // signed sideways bulge of the drag path, px
   held: number; // seconds
+  ex?: number; // client px where the finger was lifted
+  ey?: number;
 }
 export interface MatchControls {
   moveX: () => number;
@@ -420,6 +423,12 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     aimRing.rotation.x = -Math.PI / 2;
     aimRing.visible = false;
     scene.add(aimRing);
+    // Football Legacy style skill ring: closes on the defender, tap when it shuts to beat him
+    const skillMat = new THREE.MeshBasicMaterial({ color: 0x3fa9ff, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide });
+    const skillRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), skillMat);
+    skillRing.visible = false;
+    skillRing.renderOrder = 10;
+    scene.add(skillRing);
     const aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4d6d, dashSize: 0.5, gapSize: 0.35, transparent: true, opacity: 0.95 }));
     aimLine.visible = false;
     aimLine.frustumCulled = false;
@@ -551,7 +560,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
 
     // ------------------------------------------------------------- chance moments
     const M = !!cfg.moments;
-    type MState = "feed" | "auto" | "incoming" | "choose" | "aim" | "caneta" | "resolve";
+    type MState = "feed" | "auto" | "skill" | "incoming" | "choose" | "aim" | "caneta" | "resolve";
     let mState: MState = M ? "feed" : "auto";
     let resolveT = 0;
     let firstTime = false;
@@ -587,12 +596,80 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         }
       return best;
     };
+    let skillOn: P | null = null;
+    let skillT = 0;
+    const SKILL_T = 1.25; // seconds for the ring to close
     function presentWithBall(title = "CHANCE DE GOL!") {
-      mState = "choose";
       firstTime = false;
-      const opts = [OPT.chutar, OPT.passe];
-      if (!usedCaneta && markerOf()) opts.unshift(OPT.caneta);
-      hud.choices(opts, title);
+      const d = usedCaneta ? null : markerOf();
+      if (d) {
+        mState = "skill";
+        skillOn = d;
+        skillT = 0;
+        hud.banner(title);
+        hud.choices(null, "TOQUE QUANDO O CÍRCULO FECHAR!");
+      } else startAim(title);
+    }
+    function startAim(title = "") {
+      mState = "aim";
+      skillRing.visible = false;
+      if (title) hud.banner(title, "arraste até um companheiro = passe");
+      hud.choices(null, "ARRASTE • CURVE • CHUTE");
+    }
+    // tap timing on the skill ring: beat the defender (he goes to ground) or lose the ball
+    function resolveSkill(err: number) {
+      const d = skillOn!;
+      const ad = userTeam === 0 ? 1 : -1;
+      skillOn = null;
+      skillRing.visible = false;
+      usedCaneta = true;
+      const acc = THREE.MathUtils.clamp(1 - err / 0.4, 0, 1);
+      if (Math.random() < acc * 0.75 + user.drib * 0.3 - d.tack * 0.12) {
+        canetaTarget = d.pos.clone().add(new THREE.Vector3(ad * 2.6, 0, (Math.random() - 0.5) * 1.5));
+        kick(user, canetaTarget, 9, 0);
+        user.noTouch = 0.15;
+        d.noTouch = 3;
+        d.down = 2.6;
+        res.dribbles++;
+        hud.banner(acc > 0.85 ? "PERFEITO!" : "PASSOU!", "olé!");
+        mState = "caneta";
+        resolveT = 2.2;
+        hud.choices(null);
+      } else {
+        ball.owner = d;
+        ball.lastTouch = d;
+        res.lost++;
+        hud.banner("Desarmado!");
+        endMoment(1.6);
+      }
+    }
+    // finger lifted while aiming: on a team-mate → pass to him, otherwise a curled shot
+    function releaseAim(g: Gesture) {
+      if (g.ex !== undefined && g.ey !== undefined) {
+        const r = renderer.domElement.getBoundingClientRect();
+        let best: P | null = null,
+          bd = 70;
+        for (const q of players)
+          if (q.team === userTeam && !q.user) {
+            const v = q.pos.clone().setY(1).project(camera);
+            const sx = r.left + ((v.x + 1) / 2) * r.width,
+              sy = r.top + ((1 - v.y) / 2) * r.height;
+            const dd = Math.hypot(sx - g.ex, sy - g.ey);
+            if (v.z < 1 && dd < bd) {
+              bd = dd;
+              best = q;
+            }
+          }
+        if (best) {
+          forceShoot.add(best);
+          pass(user, best);
+          hud.banner("PASSE!");
+          endMoment(3.2);
+          return;
+        }
+      }
+      dragShot(g);
+      endMoment(3);
     }
     function endMoment(after = 2.2) {
       hud.choices(null);
@@ -612,7 +689,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         o.pos.set(gx - ad * (6 + i * 4.5), 0, (i % 2 ? 1 : -1) * (8 + i * 2));
         o.vel.set(0, 0, 0);
       });
-      if (Math.random() < 0.65) {
+      if (Math.random() < 0.85) {
         const m = opp[0];
         m.pos.set(user.pos.x + ad * 3, 0, uz + (Math.random() - 0.5));
       }
@@ -782,16 +859,48 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         if (mState === "incoming") {
           const d = Math.hypot(ball.pos.x - user.pos.x, ball.pos.z - user.pos.z);
           if (ball.owner === user) presentWithBall();
-          else if (d < 5) {
-            mState = "choose";
-            hud.choices([OPT.dominar, OPT.primeira], "A BOLA CHEGOU!");
+          else if (d < 2.2) {
+            if (Math.random() < 0.55 + user.drib * 0.4) {
+              ball.owner = user;
+              ball.lastTouch = user;
+              ball.vel.set(0, 0, 0);
+              ball.pos.copy(user.pos).setY(BR);
+              presentWithBall("DOMINOU!");
+            } else {
+              ball.vel.set((Math.random() - 0.5) * 6, 1.5, (Math.random() - 0.5) * 6);
+              ball.owner = null;
+              user.noTouch = 0.8;
+              hud.banner("Escapou…");
+              res.lost++;
+              endMoment(1.6);
+            }
           } else if (ball.owner) endMoment(1);
+        }
+        if (mState === "skill" && skillOn) {
+          skillT += realDt;
+          const ad = userTeam === 0 ? 1 : -1;
+          // carry the ball toward the defender; nobody may tackle while the ring is closing
+          user.vel.set(ad * user.speed * 0.55, 0, 0);
+          for (const o of players) if (o.team !== userTeam) o.noTouch = Math.max(o.noTouch, 0.3);
+          const k = Math.max(0, 1 - skillT / SKILL_T);
+          skillRing.visible = true;
+          skillRing.position.set(skillOn.pos.x, 1.0, skillOn.pos.z);
+          skillRing.quaternion.copy(camera.quaternion);
+          skillRing.scale.setScalar(0.45 + 1.9 * k);
+          skillMat.color.set(Math.abs(skillT - SKILL_T) < 0.14 ? 0xffffff : 0x3fa9ff);
+          const g = controls.released();
+          if (g && g.tap) resolveSkill(Math.abs(skillT - SKILL_T));
+          else if (g && !g.long) {
+            skillOn = null;
+            skillRing.visible = false;
+            releaseAim(g);
+          } else if (skillT > SKILL_T + 0.4) resolveSkill(1);
         }
         if (mState === "caneta") {
           resolveT -= realDt;
           const v = canetaTarget.clone().sub(user.pos).setY(0);
           if (v.length() > 0.3) user.vel.copy(v.normalize().multiplyScalar(user.speed * 1.2));
-          if (ball.owner === user) presentWithBall("PASSOU! E AGORA?");
+          if (ball.owner === user) startAim();
           else if (resolveT <= 0 || (ball.owner && ball.owner !== user)) endMoment(1);
         }
         if (mState === "resolve") {
@@ -799,7 +908,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           if (resolveT <= 0 && pause <= 0.3) backToFeed();
         }
         // slow motion while deciding
-        dt *= mState === "choose" ? 0.05 : mState === "aim" ? (firstTime ? 0.1 : 0.04) : mState === "incoming" ? 0.6 : 1;
+        dt *= mState === "skill" ? 0.18 : mState === "choose" ? 0.05 : mState === "aim" ? (firstTime ? 0.1 : 0.04) : mState === "incoming" ? 0.6 : 1;
       }
       if (pause > 0) {
         pause -= dt;
@@ -826,10 +935,8 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       }
       if (live && M && mState === "aim") {
         const g = controls.released();
-        if (g && !g.tap && !g.long) {
-          dragShot(g);
-          endMoment(3);
-        }
+        for (const o of players) if (o.team !== userTeam) o.noTouch = Math.max(o.noTouch, 0.2);
+        if (g && !g.tap && !g.long) releaseAim(g);
       }
       if (live && !M) {
         if (controls.shootHeld() && ball.owner === user) charge = Math.min(1.2, charge + dt * 1.1);
@@ -913,7 +1020,12 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const attTeam = owner ? owner.team : ball.lastTouch ? ball.lastTouch.team : -1;
       for (const p of players) {
         p.noTouch -= dt;
-        if (p.user && (!M || mState === "choose" || mState === "aim" || mState === "caneta")) continue;
+        if (p.down && p.down > 0) {
+          p.down -= dt;
+          p.vel.multiplyScalar(Math.exp(-dt * 6));
+          continue;
+        }
+        if (p.user && (!M || mState === "choose" || mState === "aim" || mState === "caneta" || mState === "skill")) continue;
         const dir = p.team === 0 ? 1 : -1;
         let target = new THREE.Vector3(p.home.x, 0, p.home.y);
         let spd = p.speed * 0.75;
@@ -1157,7 +1269,11 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
             p.mesh.rArm.rotation.z = 1.2;
           }
           p.holder.rotation.y = p.heading;
-        } else if (p.pix) p.pix.update(dt, p.heading, sp, camera.position, p.pos);
+          p.holder.rotation.z = p.down && p.down > 0 ? Math.PI / 2.2 : 0;
+        } else if (p.pix) {
+          p.pix.update(dt, p.heading, sp, camera.position, p.pos);
+          (p.pix.sprite.material as THREE.SpriteMaterial).rotation = p.down && p.down > 0 ? Math.PI / 2 : 0;
+        }
         p.holder.position.copy(p.pos);
         if (p.tag) p.tag.position.set(p.pos.x, 2.45, p.pos.z);
       }
@@ -1201,6 +1317,6 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     camera.position.set(-15, 12, 0);
     raf = requestAnimationFrame(frame);
     if (cfg.banner) M ? hud.feedLine?.(cfg.startMinute, `📣 ${cfg.banner}`) : hud.banner(cfg.banner);
-    (window as unknown as Record<string, unknown>).__match = { step: (dt: number) => { step(dt, performance.now() / 1000); view.render(); }, res, ball, players, stop: () => cancelAnimationFrame(raf), skip: () => (minute = 89.95), chance: (k: "withBall" | "incoming") => setupChance(k), get state() { return mState; } };
+    (window as unknown as Record<string, unknown>).__match = { step: (dt: number) => { step(dt, performance.now() / 1000); view.render(); }, res, ball, players, stop: () => cancelAnimationFrame(raf), skip: () => (minute = 89.95), chance: (k: "withBall" | "incoming") => setupChance(k), get state() { return mState; }, get skillT() { return skillT; } };
   });
 }

@@ -69,7 +69,7 @@ function gestureOf(pts: [number, number][], t0: number): Gesture {
     const perp = (cx * (y - sy) - cy * (x - sx)) / cl; // screen-space signed distance from the chord
     if (Math.abs(perp) > Math.abs(curl)) curl = perp;
   }
-  return { dx: cx, dy: -cy, curl: -curl, held: (performance.now() - t0) / 1000 };
+  return { dx: cx, dy: -cy, curl: -curl, held: (performance.now() - t0) / 1000, ex, ey };
 }
 {
   const zone = document.body;
