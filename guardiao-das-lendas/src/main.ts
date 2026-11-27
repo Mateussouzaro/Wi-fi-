@@ -564,7 +564,9 @@ $("sub").addEventListener("pointerdown", (e) => {
 let cineOn = false;
 let cineCam: { from: THREE.Vector3; to: THREE.Vector3; lf: THREE.Vector3; lt: THREE.Vector3; t: number; dur: number } | null = null;
 function cine(from: number[], to: number[], lf: number[], lt: number[], dur: number) {
-  cineCam = { from: V(...from), to: V(...to), lf: V(...lf), lt: V(...lt), t: 0, dur };
+  // heights are relative to the ground under each point
+  const g = (a: number[]) => V(a[0], a[1] + Math.max(0, heightAt(a[0], a[2])), a[2]);
+  cineCam = { from: g(from), to: g(to), lf: g(lf), lt: g(lt), t: 0, dur };
   cineOn = true;
   busy = true;
   document.body.classList.add("cine");
@@ -1378,8 +1380,8 @@ function frame(now: number) {
     camera.lookAt(camLook);
   } else if (started) {
     const portrait = innerHeight > innerWidth;
-    const zoom = (boss ? 1.3 : 1) * (portrait ? 1.35 : 1);
-    const want = hero.pos.clone().add(V(0, 10.5 * zoom, 9 * zoom));
+    const zoom = (boss ? 1.45 : 1) * (portrait ? 1.3 : 1);
+    const want = hero.pos.clone().add(V(0, 6.2 * zoom, 6.4 * zoom));
     camera.position.lerp(want, Math.min(1, dt * 6));
     camera.lookAt(hero.pos.x, hero.pos.y + 0.8, hero.pos.z - 0.5);
   } else {
