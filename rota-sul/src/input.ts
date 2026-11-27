@@ -4,6 +4,7 @@ export interface InputState {
   moveX: number; // -1 left … +1 right
   moveY: number; // -1 back … +1 forward
   sprint: boolean;
+  fire: boolean;
   handbrake: boolean;
   horn: boolean;
   camDX: number;
@@ -12,7 +13,7 @@ export interface InputState {
 }
 
 export function createInput(root: HTMLElement) {
-  const st: InputState = { moveX: 0, moveY: 0, sprint: false, handbrake: false, horn: false, camDX: 0, camDY: 0, pressed: new Set() };
+  const st: InputState = { moveX: 0, moveY: 0, sprint: false, fire: false, handbrake: false, horn: false, camDX: 0, camDY: 0, pressed: new Set() };
   const keys = new Set<string>();
 
   addEventListener("keydown", (e) => {
@@ -21,13 +22,23 @@ export function createInput(root: HTMLElement) {
     if (e.code === "KeyE" || e.code === "KeyF") st.pressed.add("enter");
     if (e.code === "KeyM") st.pressed.add("map");
     if (e.code === "KeyR") st.pressed.add("radio");
+    if (e.code === "KeyQ" || e.code === "Tab") {
+      e.preventDefault();
+      st.pressed.add("wheel");
+    }
+    const n = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6"].indexOf(e.code);
+    if (n >= 0) st.pressed.add("slot" + n);
   });
   addEventListener("keyup", (e) => keys.delete(e.code));
 
   // mouse look (drag) on desktop
   let mouseDown = false;
-  root.addEventListener("mousedown", () => (mouseDown = true));
-  addEventListener("mouseup", () => (mouseDown = false));
+  let mouseFire = false;
+  root.addEventListener("mousedown", (e) => {
+    mouseDown = true;
+    if (e.button === 0) mouseFire = true;
+  });
+  addEventListener("mouseup", () => (mouseDown = mouseFire = false));
   addEventListener("mousemove", (e) => {
     if (mouseDown) {
       st.camDX += e.movementX * 0.005;
@@ -48,6 +59,8 @@ export function createInput(root: HTMLElement) {
       <button data-h="sprint" class="b">🏃<span>Correr</span></button>
       <button data-h="horn" class="b">📢<span>Buzina</span></button>
       <button data-a="radio" class="b">📻<span>Rádio</span></button>
+      <button data-a="wheel" class="b">🎯<span>Armas</span></button>
+      <button data-h="fire" class="b fire">🔫<span>Atirar</span></button>
     </div>`;
   const stick = ui.querySelector("#stick") as HTMLElement;
   const knob = ui.querySelector("#knob") as HTMLElement;
@@ -154,6 +167,7 @@ export function createInput(root: HTMLElement) {
       st.sprint = keys.has("ShiftLeft") || keys.has("ShiftRight") || held.has("sprint");
       st.handbrake = keys.has("Space") || held.has("handbrake");
       st.horn = keys.has("KeyH") || held.has("horn");
+      st.fire = keys.has("KeyJ") || held.has("fire") || (mouseFire && !touch);
     },
   };
 }

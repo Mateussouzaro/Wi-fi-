@@ -120,7 +120,7 @@ export class GameAudio {
     }
   }
 
-  private drum(t: number, f0: number, f1: number, vol: number, dur: number, out: AudioNode) {
+  drum(t: number, f0: number, f1: number, vol: number, dur: number, out: AudioNode) {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -133,7 +133,7 @@ export class GameAudio {
     o.stop(t + dur + 0.02);
   }
 
-  private noise(t: number, dur: number, vol: number, freq: number, out: AudioNode) {
+  noise(t: number, dur: number, vol: number, freq: number, out: AudioNode) {
     const ctx = this.ctx!;
     const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -161,6 +161,24 @@ export class GameAudio {
     o.connect(g).connect(out);
     o.start(t);
     o.stop(t + dur + 0.02);
+  }
+
+  // gunshots: a noise crack plus a low thump, shaped per weapon
+  shot(id: string, distant = false) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const v = distant ? 0.12 : 0.5;
+    const cfg: Record<string, [number, number, number]> = {
+      pistola: [0.09, 1400, 140], sub: [0.06, 1800, 160], escopeta: [0.22, 700, 80], fuzil: [0.1, 1200, 110], punhos: [0.05, 300, 90], taco: [0.07, 400, 100],
+    };
+    const [dur, f, low] = cfg[id] ?? cfg.pistola;
+    this.noise(t, dur, v, f, this.master);
+    this.drum(t, low * 2, low, v * 0.9, dur * 1.6, this.master);
+  }
+
+  hurt() {
+    if (!this.ctx) return;
+    this.drum(this.ctx.currentTime, 220, 90, 0.25, 0.15, this.master);
   }
 
   crash(power: number) {

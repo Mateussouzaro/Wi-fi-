@@ -10,6 +10,7 @@ import { Car, CarKind, CAR_COLORS, carVsCar } from "./car";
 import { Driver } from "./traffic";
 import { makeHuman, animateHuman, collideCircle, Pedestrian } from "./humans";
 import { createInput } from "./input";
+import { WEAPONS, Arsenal, makeWeaponMesh, createWheel, Effects, raycastTargets, rayBoxes, Gunman } from "./combat";
 import { GameAudio } from "./audio";
 
 // ---------------------------------------------------------------- persistence (best effort)
@@ -82,7 +83,47 @@ const player = {
   wanted: 0,
   wantedT: 0,
   bustT: 0,
+  health: 100,
+  hurtT: 0,
 };
+const arsenal = new Arsenal(
+  (() => {
+    try {
+      const v = localStorage.getItem("rotasul.arsenal");
+      return v ? JSON.parse(v) : undefined;
+    } catch {
+      return undefined;
+    }
+  })()
+);
+const saveArsenal = () => {
+  try {
+    localStorage.setItem("rotasul.arsenal", JSON.stringify({ owned: arsenal.owned, ammo: arsenal.ammo }));
+  } catch {
+    /* private mode */
+  }
+};
+let heldGun: THREE.Group | null = null;
+function equip(i: number) {
+  if (!arsenal.owned[i]) {
+    hint(`🔒 ${WEAPONS[i].name}: compre na Armaria do Porto`, 2.5);
+    return;
+  }
+  arsenal.select(i);
+  if (heldGun) player.mesh.rFore.remove(heldGun);
+  heldGun = makeWeaponMesh(arsenal.w.id);
+  heldGun.position.y = -0.3;
+  heldGun.rotation.x = -Math.PI / 2;
+  if (arsenal.w.id === "taco") heldGun.rotation.x = -0.4;
+  player.mesh.rFore.add(heldGun);
+  toast(`${arsenal.w.name}${arsenal.w.melee ? "" : ` • ${arsenal.ammo[i]} balas`}`);
+}
+const gunmen: Gunman[] = [];
+const fx = new Effects(scene);
+const wheel = createWheel(document.body, (i) => {
+  equip(i);
+  wheel.close();
+});
 let camYaw = 0,
   camPitch = 0.22,
   camIdle = 0;
@@ -125,11 +166,22 @@ function setWanted(n: number) {
 }
 
 // ---------------------------------------------------------------- missions
+interface Step {
+  pos: THREE.Vector3;
+  text: string;
+  car?: boolean;
+  kind?: "goto" | "hold" | "kill" | "lose" | "deliver";
+  hold?: number;
+  onDone?: () => void;
+  onStart?: () => void;
+}
 interface Mission {
   name: string;
+  contact?: string;
+  intro?: string;
   start: THREE.Vector3;
   reward: number;
-  steps: { pos: THREE.Vector3; text: string; car?: boolean }[];
+  steps: Step[];
   time: number;
   needsCar?: boolean;
   wanted?: number;
@@ -170,6 +222,71 @@ const MISSIONS: Mission[] = [
     steps: [{ pos: new THREE.Vector3(), text: "Despiste a polícia! (perca todas as estrelas)" }],
   },
 ];
+// GTA-style story jobs (original characters and places)
+const STORE = new THREE.Vector3(roadX[1] + 30, 0, BEACH_ROAD + ROAD / 2 + 20);
+const GANG = new THREE.Vector3(roadX[0] - 40, 0, roadZ[2] - 10);
+const IMPORT = new THREE.Vector3(roadX[5] + 25, 0, roadZ[1] + ROAD / 2 + 4);
+const GARAGE = new THREE.Vector3(roadX[1], 0, roadZ[3]);
+let holdT = 0;
+let importCar: Car | null = null;
+const missionThugs: Gunman[] = [];
+MISSIONS.push(
+  {
+    name: "Assalto à Conveniência",
+    contact: "Tio Zé",
+    intro: "A conveniência da orla tá cheia de grana. Entra armado, rende o caixa e some!",
+    start: inter(1, 4, 0, 22),
+    reward: 4000,
+    time: 150,
+    steps: [
+      { pos: STORE, text: "Vá até a Conveniência 24h na orla" },
+      { pos: STORE, kind: "hold", hold: 5, text: "Renda o caixa! Fique na loja com uma arma de fogo na mão", onDone: () => { addMoney(1200); setWanted(2); toast("💰 Pegou o dinheiro do caixa!"); } },
+      { pos: STORE, kind: "lose", text: "Fuja! Despiste a polícia (perca as estrelas)" },
+    ],
+  },
+  {
+    name: "Acerto de Contas",
+    contact: "Dona Rita",
+    intro: "A gangue do Farol tá cobrando pedágio dos meus meninos. Resolve isso pra mim.",
+    start: inter(1, 2, -20, 0),
+    reward: 5000,
+    time: 180,
+    steps: [
+      { pos: GANG, text: "Vá até o pé do Morro do Farol", onDone: () => spawnThugs(GANG, 5) },
+      { pos: GANG, kind: "kill", text: "Derrube a gangue do Farol" },
+    ],
+  },
+  {
+    name: "Carro Importado",
+    contact: "Baixinho",
+    intro: "Tem um esportivo amarelo parado na Vila Coral. Pega e traz pra minha garagem inteiro!",
+    start: inter(4, 3, 18, 0),
+    reward: 6000,
+    time: 160,
+    steps: [
+      { pos: IMPORT, text: "Roube o esportivo amarelo", kind: "deliver", onStart: () => spawnImport() },
+      { pos: GARAGE, text: "Leve o carro até a garagem do Baixinho", kind: "goto", car: true },
+    ],
+  }
+);
+function spawnThugs(at: THREE.Vector3, n: number) {
+  for (let k = 0; k < n; k++) {
+    const g = new Gunman(scene, "thug", 300 + k * 17);
+    g.pos.set(at.x + (Math.random() - 0.5) * 16, 0.25, at.z + (Math.random() - 0.5) * 16);
+    g.home.copy(g.pos);
+    missionThugs.push(g);
+    gunmen.push(g);
+  }
+}
+function spawnImport() {
+  if (importCar) return;
+  importCar = new Car("sport", 0xffc300, scene);
+  importCar.pos.copy(IMPORT);
+  importCar.heading = Math.PI / 2;
+  importCar.sync(0);
+  cars.push(importCar);
+  spawnThugs(IMPORT.clone().add(new THREE.Vector3(0, 0, 6)), 2);
+}
 let mission: Mission | null = null;
 let mStep = 0,
   mTime = 0,
@@ -188,6 +305,77 @@ goal.scale.set(1.6, 4, 1.6);
 goal.visible = false;
 scene.add(goal);
 
+// the convenience store robbed in a mission and the gun shop
+{
+  const shop = new THREE.Mesh(new THREE.BoxGeometry(10, 4, 7), new THREE.MeshStandardMaterial({ color: 0xf1f1f1, roughness: 0.7 }));
+  shop.position.copy(STORE).add(new THREE.Vector3(0, 2, 5.5));
+  shop.castShadow = true;
+  scene.add(shop);
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 96;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#d62828";
+  g.fillRect(0, 0, 512, 96);
+  g.fillStyle = "#fff";
+  g.font = "900 56px sans-serif";
+  g.textAlign = "center";
+  g.fillText("CONVENIÊNCIA 24H", 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const sg = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.6), new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.6 }));
+  sg.position.copy(STORE).add(new THREE.Vector3(0, 4.8, 1.98));
+  scene.add(sg);
+}
+const GUNSHOP = new THREE.Vector3(roadX[3] + 16, 0, roadZ[3] - ROAD / 2 - 3);
+const shopMarker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+shopMarker.position.copy(GUNSHOP).setY(1.5);
+scene.add(shopMarker);
+let shopCooldown = 0;
+function openShop() {
+  paused = true;
+  const el = $("shop");
+  const list = el.querySelector(".list") as HTMLElement;
+  const render = () => {
+    list.innerHTML = "";
+    WEAPONS.forEach((w, i) => {
+      if (w.melee && w.price === 0) return;
+      const row = document.createElement("div");
+      row.className = "row";
+      const owned = arsenal.owned[i];
+      row.innerHTML = `<svg viewBox="0 0 56 56"><path d="${w.icon}" fill="currentColor"/></svg><b>${w.name}</b><span>${owned ? `${arsenal.ammo[i]} balas` : ""}</span>`;
+      const btn = document.createElement("button");
+      btn.className = "tbtn";
+      btn.textContent = owned ? `+${w.clip * 3} balas • R$ ${w.ammoPrice}` : `Comprar • R$ ${w.price.toLocaleString("pt-BR")}`;
+      btn.onclick = () => {
+        const cost = owned ? w.ammoPrice : w.price;
+        if (player.money < cost) {
+          btn.textContent = "Dinheiro insuficiente";
+          return;
+        }
+        addMoney(-cost);
+        if (!owned) {
+          arsenal.owned[i] = true;
+          arsenal.ammo[i] += w.clip * 2;
+        } else arsenal.ammo[i] += w.clip * 3;
+        saveArsenal();
+        render();
+      };
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+    (el.querySelector(".cash") as HTMLElement).textContent = `R$ ${player.money.toLocaleString("pt-BR")}`;
+  };
+  render();
+  el.classList.add("on");
+}
+$("shopClose").addEventListener("click", () => {
+  $("shop").classList.remove("on");
+  paused = false;
+  last = performance.now();
+  shopCooldown = 4;
+});
+
 // money pickups
 const cashGeo = new THREE.BoxGeometry(0.9, 0.5, 0.15);
 const cashMat = new THREE.MeshStandardMaterial({ color: 0x3fbf5f, emissive: 0x1a8f3a, emissiveIntensity: 0.6 });
@@ -202,8 +390,10 @@ function startMission(m: Mission) {
   mStep = 0;
   mTime = m.time;
   if (m.wanted) setWanted(m.wanted);
-  bigMsg(m.name, "Missão iniciada", "#ffd36b", 2.5);
+  bigMsg(m.name, m.contact ? `${m.contact}: "${m.intro}"` : "Missão iniciada", "#ffd36b", m.contact ? 5 : 2.5);
   goal.visible = !m.wanted;
+  holdT = 0;
+  m.steps[0].onStart?.();
   if (!m.wanted) goal.position.copy(m.steps[0].pos).setY(6);
 }
 function endMission(ok: boolean) {
@@ -215,6 +405,12 @@ function endMission(ok: boolean) {
   mission = null;
   goal.visible = false;
   mCooldown = 6;
+  for (const g of missionThugs) {
+    g.remove(scene);
+    gunmen.splice(gunmen.indexOf(g), 1);
+  }
+  missionThugs.length = 0;
+  importCar = null;
 }
 
 let hintT = 0;
@@ -483,6 +679,16 @@ function init() {
     enter: () => enterOrExit(),
     spawnPolice: () => spawnPolice(),
     big: (a: string, b: string) => bigMsg(a, b, "#ffd36b", 2.5),
+    equip: (i: number) => equip(i),
+    wheel: () => wheel.open(arsenal),
+    closeWheel: () => wheel.close(),
+    mission: (i: number) => startMission(MISSIONS[i]),
+    shop: () => openShop(),
+    gunmen,
+    arsenal,
+    get hp() {
+      return player.health;
+    },
     play: () => {
       $("title").style.display = "none";
       $("hud").classList.add("on");
@@ -532,6 +738,157 @@ function updateCamera(dt: number, snap = false) {
   camera.updateProjectionMatrix();
 }
 
+// ---------------------------------------------------------------- combat
+function damagePlayer(n: number) {
+  if (player.health <= 0) return;
+  if (player.car) {
+    player.car.health = Math.max(0, player.car.health - n * 0.8);
+    n *= 0.35;
+  }
+  player.health -= n;
+  player.hurtT = 0;
+  audio.hurt();
+  $("hurt").classList.remove("on");
+  void $("hurt").offsetWidth;
+  $("hurt").classList.add("on");
+  if (player.health <= 0) wasted();
+}
+
+function wasted() {
+  const fee = Math.min(player.money, 800);
+  addMoney(-fee);
+  bigMsg("APAGOU", `Você acordou no Hospital Central • -R$ ${fee}`, "#ff5e62", 4.5);
+  if (player.car) {
+    player.car.driver = null;
+    player.car = null;
+    scene.add(player.mesh.group);
+    input.setCarMode(false);
+  }
+  player.pos.set(roadX[3] + 10, 0.25, roadZ[1] + ROAD / 2 + 3);
+  player.health = 100;
+  setWanted(0);
+  if (mission) endMission(false);
+  for (const p of [...police]) removeCar(p.car);
+  for (const g of gunmen.filter((g) => g.kind === "cop")) {
+    g.remove(scene);
+    gunmen.splice(gunmen.indexOf(g), 1);
+  }
+}
+
+function combatStep(dt: number, st: typeof input.state, focus: THREE.Vector3) {
+  arsenal.cool -= dt;
+  player.hurtT += dt;
+  if (player.hurtT > 5 && player.health < 60) player.health = Math.min(60, player.health + dt * 4);
+  fx.update(dt);
+  // ---- player attacks (on foot)
+  if (!player.car && st.fire && arsenal.cool <= 0 && !wheel.isOpen) {
+    const w = arsenal.w;
+    arsenal.cool = w.rate;
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    const targets: { obj: Gunman | Pedestrian | Car; center: THREE.Vector3; r: number }[] = [];
+    for (const g of gunmen) if (!g.dead) targets.push({ obj: g, center: g.pos.clone().setY(g.pos.y + 1.1), r: 0.55 });
+    for (const p of peds) if (p.state !== "down") targets.push({ obj: p, center: p.pos.clone().setY(1.1), r: 0.5 });
+    for (const c of cars) if (c !== player.car) targets.push({ obj: c, center: c.pos.clone().setY(0.9), r: 1.4 });
+    if (w.melee) {
+      arsenal.lastShot = time;
+      audio.shot(w.id);
+      const front = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
+      for (const t of targets) {
+        const rel = t.center.clone().setY(0).sub(player.pos.clone().setY(0));
+        if (rel.length() < w.range + t.r && rel.normalize().dot(front) > 0.4) {
+          applyHit(t.obj, w.damage, player.pos);
+          break;
+        }
+      }
+    } else if (arsenal.ammo[arsenal.slot] > 0) {
+      arsenal.ammo[arsenal.slot]--;
+      arsenal.lastShot = time;
+      // aim assist: snap to the target closest to the crosshair
+      const eye = player.pos.clone().setY(player.pos.y + 1.45);
+      let best: { c: THREE.Vector3; a: number } | null = null;
+      for (const t of targets) {
+        if (t.obj instanceof Car) continue;
+        const v = t.center.clone().sub(eye);
+        if (v.length() > w.range) continue;
+        const a = v.normalize().angleTo(fwd);
+        if (a < 0.28 && (!best || a < best.a)) best = { c: t.center, a };
+      }
+      const aim = best ? best.c.clone().sub(eye).normalize() : new THREE.Vector3(fwd.x, Math.max(fwd.y, -0.05), fwd.z).normalize();
+      player.heading = Math.atan2(aim.x, aim.z);
+      const muzzle = eye.clone().addScaledVector(aim, 0.7);
+      audio.shot(w.id);
+      for (let k = 0; k < w.pellets; k++) {
+        const dir = aim.clone().add(new THREE.Vector3((Math.random() - 0.5) * w.spread * 2, (Math.random() - 0.5) * w.spread, (Math.random() - 0.5) * w.spread * 2)).normalize();
+        const wall = rayBoxes(muzzle, dir, w.range, world.colliders);
+        const hit = raycastTargets(muzzle, dir, wall, targets);
+        const end = muzzle.clone().addScaledVector(dir, hit ? hit.dist : wall);
+        fx.shot(muzzle, end);
+        if (hit) applyHit(hit.obj, w.damage, muzzle);
+      }
+      // gunfire scares people and draws the police
+      for (const p of peds) if (p.pos.distanceTo(player.pos) < 30) p.scare(player.pos);
+      if (police.some((p) => p.car.pos.distanceTo(player.pos) < 50)) setWanted(Math.max(player.wanted, 2));
+      saveArsenal();
+    } else {
+      hint("Sem munição! Compre na Armaria do Porto 🔫", 1.5);
+      arsenal.cool = 0.4;
+    }
+  }
+  // ---- police get out of their cars from 2 stars
+  if (player.wanted >= 2) {
+    const cops = gunmen.filter((g) => g.kind === "cop" && !g.dead).length;
+    const cap = Math.min(8, player.wanted * 2);
+    if (cops < cap && Math.random() < dt * 0.8) {
+      const pc = police.find((p) => p.car.pos.distanceTo(focus) < 45);
+      if (pc) {
+        const g = new Gunman(scene, "cop", Math.floor(Math.random() * 999));
+        const side = new THREE.Vector3(Math.cos(pc.car.heading), 0, -Math.sin(pc.car.heading));
+        g.pos.copy(pc.car.pos).addScaledVector(side, 1.8).setY(0.25);
+        gunmen.push(g);
+      }
+    }
+  }
+  // ---- armed NPCs
+  const moving = player.car ? Math.abs(player.car.speed) > 5 : input.state.moveY !== 0 || input.state.moveX !== 0;
+  for (const g of gunmen) {
+    const hostile = g.kind === "cop" ? player.wanted >= 2 : g.pos.distanceTo(focus) < 35 || g.health < 100;
+    if (!hostile && !g.dead) {
+      // idle: stand around
+      g.mesh.group.position.copy(g.pos);
+      animateHuman(g.mesh, 0, 0, time);
+      continue;
+    }
+    g.update(dt, time, focus, moving, world.colliders, world.circles, (from, hit) => {
+      audio.shot("pistola", true);
+      const to = focus.clone().setY(focus.y + 1.1).add(hit ? new THREE.Vector3() : new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 2, (Math.random() - 0.5) * 4));
+      fx.shot(from, to);
+      if (hit) damagePlayer(g.kind === "cop" ? 9 : 11);
+    });
+  }
+  // cleanup bodies and cops once the heat is gone
+  for (const g of [...gunmen]) {
+    const gone = (g.dead && g.deadT > 20) || (g.kind === "cop" && player.wanted === 0 && g.pos.distanceTo(focus) > 70);
+    if (gone && !missionThugs.includes(g)) {
+      g.remove(scene);
+      gunmen.splice(gunmen.indexOf(g), 1);
+    }
+  }
+}
+
+function applyHit(obj: Gunman | Pedestrian | Car, dmg: number, from: THREE.Vector3) {
+  if (obj instanceof Gunman) {
+    const killed = obj.hit(dmg);
+    if (obj.kind === "cop") setWanted(Math.max(player.wanted, 2) + (killed ? 1 : 0));
+    if (killed && obj.kind === "thug") toast("💥 Gangue derrubada");
+  } else if (obj instanceof Car) {
+    obj.health = Math.max(0, obj.health - dmg * 0.4);
+    if (obj.kind === "police") setWanted(Math.max(player.wanted, 2));
+  } else {
+    if (obj.knockDown(from, 6)) setWanted(player.wanted + 1);
+  }
+}
+
 // ---------------------------------------------------------------- main loop
 let last = performance.now();
 let time = 0;
@@ -541,7 +898,7 @@ let shake = 0;
 // Capture mode (#capture in the URL): no real-time loop; a recorder drives step(dt)
 // frame by frame and can script the controls through `drive`.
 const CAPTURE = location.hash.includes("capture");
-const drive: { moveX?: number; moveY?: number; handbrake?: boolean; sprint?: boolean; camDX?: number } = {};
+const drive: { moveX?: number; moveY?: number; handbrake?: boolean; sprint?: boolean; camDX?: number; fire?: boolean } = {};
 
 function loop(now: number) {
   requestAnimationFrame(loop);
@@ -552,6 +909,7 @@ function loop(now: number) {
 }
 
 function step(dt: number) {
+  if (wheel.isOpen) dt *= 0.2;
   time += dt;
   input.poll();
   const st = input.state;
@@ -561,9 +919,15 @@ function step(dt: number) {
     if (drive.handbrake !== undefined) st.handbrake = drive.handbrake;
     if (drive.sprint !== undefined) st.sprint = drive.sprint;
     if (drive.camDX) st.camDX += drive.camDX;
+    if (drive.fire !== undefined) st.fire = drive.fire;
   }
 
   if (st.pressed.has("enter")) enterOrExit();
+  if (st.pressed.has("wheel")) {
+    if (wheel.isOpen) wheel.close();
+    else if (!player.car) wheel.open(arsenal);
+  }
+  for (let k = 0; k < WEAPONS.length; k++) if (st.pressed.has("slot" + k)) equip(k);
   if (st.pressed.has("radio") && player.car) toast(`📻 ${audio.nextStation()}`);
   st.pressed.clear();
 
@@ -605,6 +969,17 @@ function step(dt: number) {
     player.pos.y = onPier ? PIER.y : 0.25;
     player.phase += dt * (st.sprint ? 11 : 6.5) * amt;
     animateHuman(player.mesh, player.phase, amt * (st.sprint ? 2 : 1), time);
+    if (!arsenal.w.melee && (st.fire || time - arsenal.lastShot < 1.2)) {
+      player.mesh.rArm.rotation.x = -1.5;
+      player.mesh.rFore.rotation.x = -0.05;
+      if (arsenal.w.twoHanded) {
+        player.mesh.lArm.rotation.x = -1.35;
+        player.mesh.lArm.rotation.z = 0.55;
+        player.mesh.lFore.rotation.x = -0.4;
+      }
+    } else if (arsenal.w.id === "taco" && time - arsenal.lastShot < 0.35) {
+      player.mesh.rArm.rotation.x = -2.2 + (time - arsenal.lastShot) * 6;
+    }
     player.mesh.group.position.copy(player.pos);
     player.mesh.group.rotation.y = player.heading;
     // nearby car hint
@@ -684,7 +1059,7 @@ function step(dt: number) {
     // busted check
     const close = police.some((p) => p.car.pos.distanceTo(focus) < (player.car ? 6.5 : 5));
     const slow = player.car ? Math.abs(player.car.speed) < 2 : true;
-    player.bustT = close && slow ? player.bustT + dt : Math.max(0, player.bustT - dt);
+    player.bustT = close && slow && player.wanted <= 1 ? player.bustT + dt : Math.max(0, player.bustT - dt);
     if (player.bustT > (player.car ? 3 : 2.2)) {
       player.bustT = 0;
       busted();
@@ -713,10 +1088,28 @@ function step(dt: number) {
     } else {
       const s = m.steps[mStep];
       goal.position.set(s.pos.x, 6, s.pos.z);
-      if (Math.hypot(focus.x - s.pos.x, focus.z - s.pos.z) < 5.5) {
+      goal.visible = s.kind !== "lose" && s.kind !== "kill";
+      let done = false;
+      const near = Math.hypot(focus.x - s.pos.x, focus.z - s.pos.z) < 5.5;
+      if (s.kind === "hold") {
+        if (near && !player.car && arsenal.armed) {
+          holdT += dt;
+          hint(`Rendendo o caixa… ${Math.max(0, (s.hold ?? 5) - holdT).toFixed(1)}s`, 0.3);
+        }
+        done = holdT >= (s.hold ?? 5);
+      } else if (s.kind === "lose") done = player.wanted === 0;
+      else if (s.kind === "kill") done = missionThugs.every((g) => g.dead);
+      else if (s.kind === "deliver") done = !!importCar && player.car === importCar;
+      else done = near && (!s.car || (player.car !== null && (!importCar || player.car === importCar)));
+      if (done) {
+        s.onDone?.();
         mStep++;
+        holdT = 0;
         audio.cash();
-        if (mStep >= m.steps.length) endMission(true);
+        if (mStep >= m.steps.length) {
+          if (importCar && player.car === importCar) m.reward = Math.round(m.reward * (0.4 + 0.6 * importCar.health / 100));
+          endMission(true);
+        } else m.steps[mStep].onStart?.();
       }
     }
     if (mission && mTime <= 0) endMission(false);
@@ -740,6 +1133,10 @@ function step(dt: number) {
   }
 
   // ---- world, camera, audio
+  combatStep(dt, st, focus);
+  shopCooldown -= dt;
+  shopMarker.visible = shopCooldown <= 0;
+  if (!player.car && shopCooldown <= 0 && player.pos.distanceTo(GUNSHOP.clone().setY(player.pos.y)) < 3) openShop();
   world.update(dt, time, focus);
   if (bloom) bloom.strength = world.isNight() ? 0.55 : 0.04;
   updateCamera(dt);
@@ -760,6 +1157,8 @@ function step(dt: number) {
 
   // ---- HUD
   hud.money.textContent = `R$ ${player.money.toLocaleString("pt-BR")}`;
+  $("weapon").textContent = player.car ? "" : `${arsenal.w.name}${arsenal.w.melee ? "" : ` • ${arsenal.ammo[arsenal.slot]}`}`;
+  ($("hp").firstElementChild as HTMLElement).style.width = `${Math.max(0, player.health)}%`;
   hud.stars.innerHTML = Array.from({ length: 5 }, (_, i) => (i < player.wanted ? "<b>★</b>" : "★")).join("");
   hud.stars.classList.toggle("flash", player.wanted > 0 && player.wantedT > 0);
   const hr = world.timeOfDay();
