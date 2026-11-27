@@ -173,7 +173,7 @@ text(speedo, "km/h", UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, 0, 90), Enum.Font.G
 local carNameText = text(speedo, "", UDim2.new(1, 0, 0, 18), UDim2.new(0, 0, 0, 112), Enum.Font.GothamBold, 11, rgb(190, 190, 200))
 
 -- ------------------------------------------------------------------ tutorial panel
-local tut = frame(gui, UDim2.new(0, 330, 0, 96), UDim2.new(0.5, -165, 1, -130), DARK, 0.1)
+local tut = frame(gui, UDim2.new(0, 330, 0, 96), UDim2.new(0.5, -165, 0, 64), DARK, 0.1)
 corner(tut, 16)
 stroke(tut, GOLD, 2)
 tut.Visible = false
@@ -510,7 +510,7 @@ local function showStep()
 	end
 	tutStep.Text = TUT[step][1]
 	tutText.Text = TUT[step][2]
-	if not tut.Visible then slideIn(tut, UDim2.new(0.5, -165, 1.3, 0)) end
+	if not tut.Visible then slideIn(tut, UDim2.new(0.5, -165, -0.3, 0)) end
 	if step == 2 then setTarget(PLACES[2] and PLACES[2].pos or nil)
 	elseif step == 3 then setTarget(PLACES[1].pos)
 	else setTarget(nil) end

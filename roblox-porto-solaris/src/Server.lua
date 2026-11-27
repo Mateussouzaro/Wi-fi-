@@ -32,7 +32,7 @@ local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 local V = Vector3.new
 
 -- ------------------------------------------------------------------ lighting
-Lighting.ClockTime = 17.2
+Lighting.ClockTime = 15.5
 Lighting.Brightness = 2.6
 Lighting.EnvironmentDiffuseScale = 1
 Lighting.EnvironmentSpecularScale = 1
@@ -127,8 +127,8 @@ local function fill(cx, cy, cz, sx, sy, sz, mat)
 		end
 	end
 end
-fill(0, -4, -200, 1600, 8, 1000, Enum.Material.Grass) -- land (top at y=0), z from -700 to 300
-fill(0, -5, 330, 1600, 8, 60, Enum.Material.Sand) -- beach
+fill(0, -5.2, -200, 1600, 8, 1000, Enum.Material.Grass) -- land (top about y=-1.2, under every road), z from -700 to 300
+fill(0, -5.6, 330, 1600, 8, 60, Enum.Material.Sand) -- beach
 fill(0, -22, 700, 1600, 20, 680, Enum.Material.Sand) -- sea floor
 fill(0, -7, 700, 1600, 12, 680, Enum.Material.Water) -- sea (surface at y=-1)
 
@@ -443,9 +443,25 @@ local function showcase(cf, index)
 	end
 	local seat = m:FindFirstChild("DriveSeat")
 	if seat then m.PrimaryPart = seat end
-	-- rest the model on the ground: put the bottom of its bounding box at cf
-	local bcf, size = m:GetBoundingBox()
-	m:PivotTo(cf * bcf:ToObjectSpace(m:GetPivot()) + Vector3.new(0, size.Y / 2, 0))
+	-- rest the car on its wheels: lowest wheel bottom goes to the height of cf
+	m:PivotTo(cf * CFrame.new(0, 0, 0) * (m:GetPivot() - m:GetPivot().Position))
+	local low = nil
+	local wheels = m:FindFirstChild("Wheels")
+	if wheels then
+		for _, w in ipairs(wheels:GetChildren()) do
+			if w:IsA("BasePart") then
+				local b = w.Position.Y - math.max(w.Size.Y, w.Size.Z) / 2
+				low = low and math.min(low, b) or b
+			end
+		end
+	end
+	if not low then
+		local bcf, size = m:GetBoundingBox()
+		low = bcf.Position.Y - size.Y / 2
+	end
+	m:PivotTo(m:GetPivot() + V(0, cf.Position.Y - low, 0))
+	local bcf = m:GetBoundingBox()
+	m:PivotTo(m:GetPivot() + V(cf.Position.X - bcf.Position.X, 0, cf.Position.Z - bcf.Position.Z))
 	m.Parent = map
 	return m
 end
@@ -630,11 +646,21 @@ do
 			if math.abs(x) > 24 then
 				local h = 30 + math.random() * 90
 				local w = 26 + math.random() * 10
-				local tw = part({ Size = V(w, h, w), Position = V(x, h / 2, z), Color = Color3.fromHSV(0.58 + math.random() * 0.06, 0.1 + math.random() * 0.15, 0.5 + math.random() * 0.35), Material = Enum.Material.Glass, Reflectance = 0.15 })
-				-- window bands that glow at night
-				for k = 1, math.floor(h / 10) do
-					local band = part({ Size = V(w + 0.2, 0.6, w + 0.2), Position = V(x, k * 10 - 2, z), Color = rgb(255, 220, 150), Material = Enum.Material.SmoothPlastic, CanCollide = false })
-					table.insert(nightLights, { band = band })
+				local tw = part({ Size = V(w, h, w), Position = V(x, h / 2, z), Color = Color3.fromHSV(0.56 + math.random() * 0.05, 0.25, 0.35 + math.random() * 0.25), Material = Enum.Material.Glass, Reflectance = 0.35 })
+				-- vertical mullions on every face
+				for m = -2, 2 do
+					for _, sg in ipairs({ -1, 1 }) do
+						part({ Size = V(0.3, h, 0.5), Position = V(x + sg * (w / 2 + 0.15), h / 2, z + m * w / 5), Color = rgb(40, 44, 50), Material = Enum.Material.Metal, CanCollide = false })
+						part({ Size = V(0.5, h, 0.3), Position = V(x + m * w / 5, h / 2, z + sg * (w / 2 + 0.15)), Color = rgb(40, 44, 50), Material = Enum.Material.Metal, CanCollide = false })
+					end
+				end
+				-- roof cap and a few lit floors at night
+				part({ Size = V(w + 0.6, 1.2, w + 0.6), Position = V(x, h + 0.6, z), Color = rgb(50, 52, 58), Material = Enum.Material.Concrete })
+				for k = 1, math.floor(h / 8) do
+					if math.random() < 0.35 then
+						local band = part({ Size = V(w + 0.1, 2.2, w + 0.1), Position = V(x, k * 8 - 3, z), Color = rgb(255, 214, 150), Material = Enum.Material.Glass, Transparency = 1, CanCollide = false })
+						table.insert(nightLights, { band = band })
+					end
 				end
 				local _ = tw
 			end
@@ -802,7 +828,7 @@ end
 -- ------------------------------------------------------------------ BEACH boulevard + pier lookout
 do
 	for x = -400, 400, 30 do
-		if math.abs(x) > 15 then palm(x, 300 + math.random(-4, 4)) end
+		if math.abs(x) > 15 and x < 240 then palm(x, 300 + math.random(-4, 4)) end
 	end
 	part({ Size = V(820, 0.4, 8), Position = V(0, 0.2, 290), Color = rgb(225, 205, 170), Material = Enum.Material.WoodPlanks })
 	-- pier
@@ -820,6 +846,259 @@ do
 	local _ = lookout and lh
 end
 
+-- ------------------------------------------------------------------ REALISM PASS: clouds, sidewalks, greenery, street furniture
+do
+	local clouds = Instance.new("Clouds")
+	clouds.Cover = 0.55
+	clouds.Density = 0.6
+	clouds.Color = rgb(255, 245, 235)
+	clouds.Parent = workspace.Terrain
+	Lighting.ShadowSoftness = 0.18
+	Lighting.ExposureCompensation = 0.1
+	-- sidewalks with a low curb along both sides of the main roads
+	local function sidewalk(x1, z1, x2, z2, roadW)
+		local a, b = V(x1, 0, z1), V(x2, 0, z2)
+		local len = (b - a).Magnitude
+		local cf = CFrame.lookAt((a + b) / 2, b)
+		for _, s in ipairs({ -1, 1 }) do
+			part({ Size = V(5, 0.3, len), CFrame = cf * CFrame.new(s * (roadW / 2 + 4), 0.16, 0), Color = rgb(196, 192, 184), Material = Enum.Material.Concrete, CanCollide = false })
+			-- tree pits and bushes every 30 studs
+			for d = -len / 2 + 15, len / 2 - 15, 30 do
+				local p = (cf * CFrame.new(s * (roadW / 2 + 4.5), 0, d)).Position
+				local bush = part({ Shape = Enum.PartType.Ball, Size = V(3.4, 2.6, 3.4), Position = p + V(0, 1.2, 0), Color = Color3.fromHSV(0.27 + math.random() * 0.05, 0.55, 0.32 + math.random() * 0.1), Material = Enum.Material.Grass, CanCollide = false })
+				local _ = bush
+			end
+		end
+	end
+	sidewalk(0, -520, 0, 270, 24)
+	sidewalk(-420, -140, 420, -140, 24)
+	sidewalk(-420, 90, 420, 90, 22)
+	-- planters with flowers around the meet lot
+	local function planter(x, z, w, d)
+		part({ Size = V(w, 0.8, d), Position = V(x, 0.4, z), Color = rgb(170, 160, 145), Material = Enum.Material.Concrete })
+		part({ Size = V(w - 0.6, 0.3, d - 0.6), Position = V(x, 0.85, z), Color = rgb(70, 50, 35), Material = Enum.Material.Ground })
+		for i = 1, math.floor(w * d / 6) do
+			part({ Shape = Enum.PartType.Ball, Size = V(0.9, 0.9, 0.9), Position = V(x + (math.random() - 0.5) * (w - 1.5), 1.3, z + (math.random() - 0.5) * (d - 1.5)), Color = Color3.fromHSV(({ 0, 0.08, 0.14, 0.8, 0.92 })[math.random(1, 5)], 0.75, 1), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		end
+	end
+	for i = 0, 5 do
+		planter(55 + i * 22, -44, 12, 3)
+		planter(55 + i * 22, 44, 12, 3)
+	end
+	-- bollards (balizadores) and cones
+	local function bollard(x, z)
+		part({ Shape = Enum.PartType.Cylinder, Size = V(2.6, 0.7, 0.7), CFrame = CFrame.new(x, 1.3, z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(250, 140, 30), Material = Enum.Material.SmoothPlastic })
+		local band = part({ Shape = Enum.PartType.Cylinder, Size = V(0.3, 0.74, 0.74), CFrame = CFrame.new(x, 2.2, z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(255, 255, 255), Material = Enum.Material.Neon })
+		local _ = band
+	end
+	for z = -40, 40, 6 do
+		if math.abs(z) > 20 then bollard(29, z) end
+	end
+	for x = 228, 292, 8 do
+		if x < 250 or x > 270 then bollard(x, -88) end
+	end
+	-- benches, bins and bus stops along the central avenue
+	local function bench(x, z, ry)
+		local base = CFrame.new(x, 0, z) * CFrame.Angles(0, ry, 0)
+		part({ Size = V(5, 0.3, 1.4), CFrame = base * CFrame.new(0, 1.4, 0), Color = rgb(140, 95, 60), Material = Enum.Material.WoodPlanks })
+		part({ Size = V(5, 1.2, 0.25), CFrame = base * CFrame.new(0, 2.1, 0.6), Color = rgb(140, 95, 60), Material = Enum.Material.WoodPlanks })
+		for _, s in ipairs({ -2, 2 }) do part({ Size = V(0.3, 1.4, 1.2), CFrame = base * CFrame.new(s, 0.7, 0), Color = rgb(40, 40, 44), Material = Enum.Material.Metal }) end
+	end
+	local function bin(x, z)
+		part({ Shape = Enum.PartType.Cylinder, Size = V(2.4, 1.6, 1.6), CFrame = CFrame.new(x, 1.2, z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(40, 110, 60), Material = Enum.Material.Metal })
+	end
+	local function busStop(x, z, ry)
+		local base = CFrame.new(x, 0, z) * CFrame.Angles(0, ry, 0)
+		part({ Size = V(10, 0.3, 4), CFrame = base * CFrame.new(0, 8.2, 0), Color = rgb(30, 30, 34), Material = Enum.Material.Metal })
+		part({ Size = V(10, 7, 0.2), CFrame = base * CFrame.new(0, 4.6, 1.8), Color = rgb(170, 210, 230), Material = Enum.Material.Glass, Transparency = 0.5 })
+		for _, s in ipairs({ -4.8, 4.8 }) do part({ Size = V(0.3, 8, 0.3), CFrame = base * CFrame.new(s, 4, 1.8), Color = rgb(30, 30, 34), Material = Enum.Material.Metal }) end
+		local ad = part({ Size = V(3, 5, 0.3), CFrame = base * CFrame.new(-3, 4.5, 1.6), Color = rgb(255, 255, 255), Material = Enum.Material.Neon })
+		sign(ad, "PORTO\nSOLARIS\nCAR MEET", rgb(255, 120, 40))
+		bench(x, z, ry)
+	end
+	for _, z in ipairs({ -480, -380, -60, 40, 160 }) do
+		busStop(-21, z, math.rad(-90))
+		bin(21, z + 20)
+		bench(21, z - 20, math.rad(90))
+	end
+end
+
+-- ------------------------------------------------------------------ RUA NEON (between the cross avenue and downtown)
+do
+	local cz = -235
+	part({ Size = V(520, 0.25, 22), Position = V(0, 0.12, cz), Color = rgb(35, 36, 42), Material = Enum.Material.Asphalt })
+	local NEON = { rgb(255, 40, 160), rgb(40, 200, 255), rgb(170, 60, 255), rgb(255, 210, 40), rgb(60, 255, 140) }
+	local WORDS = { "KARAOKÊ", "ARCADE", "LANCHES", "TATTOO", "GAMES", "BAR 24H", "CINEMA", "PIZZA", "DJ", "SNEAKERS" }
+	for i = 0, 17 do
+		for _, side in ipairs({ -1, 1 }) do
+			local x = -250 + i * 29
+			if math.abs(x) > 18 then
+				local z = cz + side * 22
+				local h = 16 + math.random(0, 18)
+				local b = part({ Size = V(24, h, 18), Position = V(x, h / 2, z + side * 2), Color = Color3.fromHSV(0.65, 0.15, 0.18 + math.random() * 0.12), Material = Enum.Material.Concrete })
+				local col = NEON[math.random(1, #NEON)]
+				local board = part({ Size = V(14, 3.2, 0.4), CFrame = CFrame.new(x, 8 + math.random(0, 4), z - side * 7.3) * CFrame.Angles(0, side > 0 and 0 or math.rad(180), 0), Color = rgb(10, 10, 14), Material = Enum.Material.SmoothPlastic })
+				sign(board, WORDS[math.random(1, #WORDS)], col)
+				local strip = part({ Size = V(24.2, 0.4, 0.4), Position = V(x, h - 0.5, z - side * 7.2), Color = col, Material = Enum.Material.Neon })
+				local l = light(strip, col, 22, 2)
+				table.insert(nightLights, { l = l })
+				-- glowing shop front
+				local front = part({ Size = V(18, 5, 0.2), Position = V(x, 2.6, z - side * 7.1), Color = col:Lerp(rgb(255, 255, 255), 0.6), Material = Enum.Material.Neon, Transparency = 0.45 })
+				local _ = b and front
+			end
+		end
+	end
+	-- neon arches over the street
+	for i = 0, 4 do
+		local x = -200 + i * 100
+		local col = NEON[i % #NEON + 1]
+		for _, s in ipairs({ -1, 1 }) do part({ Size = V(0.8, 14, 0.8), Position = V(x, 7, cz + s * 11), Color = rgb(20, 20, 24), Material = Enum.Material.Metal }) end
+		local arch = part({ Size = V(0.8, 0.8, 23), Position = V(x, 14, cz), Color = col, Material = Enum.Material.Neon })
+		light(arch, col, 30, 2.5)
+	end
+end
+
+-- ------------------------------------------------------------------ PORTO (container port with ships, south-east beach)
+do
+	local cx, cz = 330, 340
+	part({ Size = V(150, 3, 100), Position = V(cx, -1.35, cz), Color = rgb(120, 120, 118), Material = Enum.Material.Concrete })
+	-- stacked containers
+	local CC = { rgb(200, 60, 40), rgb(40, 110, 190), rgb(240, 170, 40), rgb(60, 150, 90), rgb(230, 230, 230), rgb(120, 60, 140) }
+	for row = 0, 3 do
+		for col = 0, 5 do
+			local stack = math.random(1, 4)
+			for k = 0, stack - 1 do
+				local c = part({ Size = V(8, 8.5, 20), Position = V(cx - 50 + col * 11, 0.15 + 4.25 + k * 8.6, cz - 30 + row * 23), Color = CC[math.random(1, #CC)], Material = Enum.Material.CorrodedMetal })
+				local _ = c
+			end
+		end
+	end
+	-- gantry cranes along the quay edge
+	for i = 0, 2 do
+		local x = cx - 30 + i * 40
+		local y0 = 0.15
+		for _, dz in ipairs({ -10, 10 }) do
+			for _, dx in ipairs({ -6, 6 }) do part({ Size = V(1.6, 40, 1.6), Position = V(x + dx, y0 + 20, cz + 45 + dz), Color = rgb(230, 80, 40), Material = Enum.Material.Metal }) end
+		end
+		part({ Size = V(14, 2, 70), Position = V(x, y0 + 40, cz + 60), Color = rgb(230, 80, 40), Material = Enum.Material.Metal })
+		local tl = part({ Size = V(1, 1, 1), Position = V(x, y0 + 42, cz + 92), Color = rgb(255, 40, 40), Material = Enum.Material.Neon })
+		light(tl, rgb(255, 40, 40), 20, 2)
+	end
+	-- two cargo ships moored at the quay
+	local function ship(x, z, len, hullC)
+		part({ Size = V(26, 12, len), Position = V(x, 3, z), Color = hullC, Material = Enum.Material.Metal })
+		part({ Size = V(26.2, 2, len + 0.2), Position = V(x, -1.5, z), Color = rgb(150, 30, 30), Material = Enum.Material.Metal })
+		part({ Size = V(20, 14, 14), Position = V(x, 16, z + len / 2 - 10), Color = rgb(240, 240, 240), Material = Enum.Material.SmoothPlastic })
+		part({ Shape = Enum.PartType.Cylinder, Size = V(10, 4, 4), CFrame = CFrame.new(x, 27, z + len / 2 - 8) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(30, 30, 30), Material = Enum.Material.Metal })
+		for k = 0, math.floor((len - 30) / 21) do
+			for j = -1, 1 do
+				part({ Size = V(7.5, 8, 20), Position = V(x + j * 8, 13, z - len / 2 + 12 + k * 21), Color = CC[math.random(1, #CC)], Material = Enum.Material.CorrodedMetal })
+			end
+		end
+	end
+	ship(cx - 20, cz + 140, 150, rgb(30, 60, 110))
+	ship(cx + 40, cz + 150, 120, rgb(40, 40, 44))
+	sign(part({ Size = V(30, 6, 1), CFrame = CFrame.new(cx - 60, 8, cz - 48) * CFrame.Angles(0, math.rad(180), 0), Color = rgb(20, 40, 70), Material = Enum.Material.SmoothPlastic }), "PORTO SOLARIS", rgb(255, 255, 255))
+end
+
+-- ------------------------------------------------------------------ TUNNEL through a hill on the west ring road
+do
+	local x, z = -420, -25
+	T:FillBall(V(x, -30, z), 95, Enum.Material.Rock)
+	T:FillBall(V(x - 30, -20, z + 20), 70, Enum.Material.Grass)
+	-- carve the road corridor through it (keeps the ground below y=0)
+	T:FillBlock(CFrame.new(x, 9, z), V(40, 16, 230), Enum.Material.Air)
+	-- tunnel shell, lights and portals
+	part({ Size = V(36, 1, 200), Position = V(x, 15, z), Color = rgb(60, 60, 64), Material = Enum.Material.Concrete })
+	for _, s in ipairs({ -1, 1 }) do
+		part({ Size = V(1, 15, 200), Position = V(x + s * 18, 7.5, z), Color = rgb(170, 168, 160), Material = Enum.Material.Concrete })
+		for d = -95, 95, 10 do
+			local l = part({ Size = V(0.4, 0.5, 4), Position = V(x + s * 17.4, 12, z + d), Color = rgb(255, 200, 120), Material = Enum.Material.Neon })
+			if d % 20 == 5 then light(l, rgb(255, 200, 120), 20, 1.6) end
+		end
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		sign(part({ Size = V(36, 4, 1), CFrame = CFrame.new(x, 17.5, z + s * 100) * CFrame.Angles(0, s > 0 and 0 or math.rad(180), 0), Color = rgb(30, 70, 40), Material = Enum.Material.SmoothPlastic }), "TÚNEL DA SERRA", rgb(255, 255, 255))
+	end
+end
+
+-- ------------------------------------------------------------------ DRIFT ARENA (east of the meet lot)
+local DRIFT = { cx = 320, cz = 20, w = 140, d = 90 }
+do
+	part({ Size = V(DRIFT.w, 0.3, DRIFT.d), Position = V(DRIFT.cx, 0.13, DRIFT.cz), Color = rgb(40, 41, 45), Material = Enum.Material.Asphalt })
+	-- painted circle and tyre walls
+	for a = 0, 355, 6 do
+		local r = 26
+		part({ Size = V(0.6, 0.32, 3), CFrame = CFrame.new(DRIFT.cx + math.cos(math.rad(a)) * r, 0.15, DRIFT.cz + math.sin(math.rad(a)) * r) * CFrame.Angles(0, -math.rad(a), 0), Color = rgb(255, 210, 40), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+	end
+	for i = 0, 27 do
+		local a = i / 28 * math.pi * 2
+		local x = DRIFT.cx + math.cos(a) * (DRIFT.w / 2 - 3)
+		local z = DRIFT.cz + math.sin(a) * (DRIFT.d / 2 - 3)
+		part({ Shape = Enum.PartType.Cylinder, Size = V(2.4, 3, 3), CFrame = CFrame.new(x, 1.2, z) * CFrame.Angles(0, 0, math.rad(90)), Color = (i % 2 == 0) and rgb(230, 40, 40) or rgb(240, 240, 240), Material = Enum.Material.SmoothPlastic })
+	end
+	for i = 0, 7 do
+		part({ Size = V(1.2, 2, 1.2), Position = V(DRIFT.cx - 40 + i * 11, 1, DRIFT.cz + (i % 2 == 0 and 8 or -8)), Color = rgb(255, 120, 20), Material = Enum.Material.SmoothPlastic })
+	end
+	sign(part({ Size = V(40, 6, 1), CFrame = CFrame.new(DRIFT.cx, 9, DRIFT.cz - DRIFT.d / 2 - 2) * CFrame.Angles(0, math.rad(180), 0), Color = rgb(15, 15, 18), Material = Enum.Material.SmoothPlastic }), "ARENA DE DRIFT", rgb(255, 60, 60))
+	for _, s in ipairs({ -1, 1 }) do
+		local p = part({ Size = V(1, 20, 1), Position = V(DRIFT.cx + s * 21, 10, DRIFT.cz - DRIFT.d / 2 - 2), Color = rgb(30, 30, 34), Material = Enum.Material.Metal })
+		local _ = p
+	end
+end
+local driftValue = Instance.new("StringValue")
+driftValue.Name = "Drift"
+driftValue.Value = DRIFT.cx .. "|" .. DRIFT.cz .. "|" .. DRIFT.w .. "|" .. DRIFT.d
+driftValue.Parent = ReplicatedStorage
+
+-- ------------------------------------------------------------------ RACE: time trial around the ring road
+local RACE = { V(0, 0, 270), V(410, 0, 262), V(412, 0, -510), V(-410, 0, -512), V(-412, 0, 262), V(-10, 0, 270) }
+do
+	local gate = RACE[1]
+	for _, s in ipairs({ -1, 1 }) do part({ Size = V(1.5, 14, 1.5), Position = gate + V(-4, 7, s * 15), Color = rgb(20, 20, 24), Material = Enum.Material.Metal }) end
+	local banner = part({ Size = V(1, 4, 31), Position = gate + V(-4, 14, 0), Color = rgb(15, 15, 18), Material = Enum.Material.SmoothPlastic })
+	sign(banner, "LARGADA • CORRIDA DO PORTO", rgb(255, 255, 255))
+	-- chequered line
+	for i = 0, 11 do
+		for j = 0, 1 do
+			part({ Size = V(1.2, 0.32, 2.2), Position = gate + V(-4 + j * 1.2, 0.14, -12 + i * 2.2), Color = ((i + j) % 2 == 0) and rgb(240, 240, 240) or rgb(20, 20, 20), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		end
+	end
+end
+local raceValue = Instance.new("StringValue")
+raceValue.Name = "Corrida"
+do
+	local t = {}
+	for _, p in ipairs(RACE) do table.insert(t, p.X .. "," .. p.Z) end
+	raceValue.Value = table.concat(t, ";")
+end
+raceValue.Parent = ReplicatedStorage
+
+-- ------------------------------------------------------------------ RECORDS BOARD at the meet lot
+local recordsBoard
+do
+	local b = part({ Size = V(1, 14, 22), CFrame = CFrame.new(186, 9, 0), Color = rgb(12, 12, 16), Material = Enum.Material.SmoothPlastic })
+	for _, s in ipairs({ -1, 1 }) do part({ Size = V(1, 16, 1), Position = V(186, 8, s * 11), Color = rgb(30, 30, 34), Material = Enum.Material.Metal }) end
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Left
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 30
+	sg.LightInfluence = 0
+	sg.Parent = b
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, -40, 1, -40)
+	t.Position = UDim2.new(0, 20, 0, 20)
+	t.BackgroundTransparency = 1
+	t.TextColor3 = rgb(255, 210, 60)
+	t.Font = Enum.Font.GothamBold
+	t.TextScaled = true
+	t.TextXAlignment = Enum.TextXAlignment.Left
+	t.TextYAlignment = Enum.TextYAlignment.Top
+	t.Text = "🏆 RECORDES\n\nCorrida: —\nDrift: —\nCarro mais bonito: —"
+	t.Parent = sg
+	recordsBoard = t
+end
+
 -- ------------------------------------------------------------------ places to discover (credits)
 local PLACES = {
 	{ id = "meet", name = "Encontro Solaris", pos = V(105, 0, 0), r = 75 },
@@ -828,6 +1107,10 @@ local PLACES = {
 	{ id = "centro", name = "Centro", pos = V(0, 0, -390), r = 90 },
 	{ id = "praia", name = "Mirante do Píer", pos = V(0, 0, 500), r = 25 },
 	{ id = "sakura", name = "Distrito Sakura", pos = V(-300, 0, 180), r = 90 },
+	{ id = "neon", name = "Rua Neon", pos = V(0, 0, -235), r = 100 },
+	{ id = "porto", name = "Porto de Contêineres", pos = V(330, 0, 340), r = 70 },
+	{ id = "tunel", name = "Túnel da Serra", pos = V(-420, 0, -25), r = 60 },
+	{ id = "drift", name = "Arena de Drift", pos = V(320, 0, 20), r = 60 },
 }
 local placesValue = Instance.new("StringValue")
 placesValue.Name = "Lugares"
@@ -949,7 +1232,7 @@ Progress.OnServerEvent:Connect(function(plr, kind, value)
 end)
 
 -- ------------------------------------------------------------------ day/night cycle and animations
-local DAY_LENGTH = 16 * 60 -- seconds for a full day
+local DAY_LENGTH = 24 * 60 -- seconds for a full day
 local last = os.clock()
 RunService.Heartbeat:Connect(function(dt)
 	Lighting.ClockTime = (Lighting.ClockTime + dt * 24 / DAY_LENGTH) % 24
@@ -967,7 +1250,7 @@ task.spawn(function()
 			wasNight = night
 			for _, n in ipairs(nightLights) do
 				if n.l then n.l.Enabled = night end
-				if n.band then n.band.Material = night and Enum.Material.Neon or Enum.Material.SmoothPlastic n.band.Transparency = night and 0.2 or 0.7 end
+				if n.band then n.band.Material = night and Enum.Material.Neon or Enum.Material.Glass n.band.Transparency = night and 0.55 or 1 end
 			end
 			-- spawned cars switch headlights too
 			for _, car in ipairs(carsFolder:GetChildren()) do
@@ -975,7 +1258,9 @@ task.spawn(function()
 					if d:IsA("SpotLight") then d.Enabled = night end
 				end
 			end
-			atmo.Density = night and 0.38 or 0.3
+			atmo.Density = night and 0.34 or 0.3
+			Lighting.OutdoorAmbient = night and rgb(95, 100, 125) or rgb(120, 120, 130)
+			Lighting.Brightness = night and 3 or 2.6
 		end
 		task.wait(2)
 		local _ = last
