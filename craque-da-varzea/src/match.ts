@@ -184,7 +184,7 @@ export interface MatchControls {
   released: () => (Gesture & { tap: boolean; long: boolean }) | null; // consumed once
 }
 
-export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void }, controls: MatchControls): Promise<MatchResult> {
+export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void; feed?: (on: boolean) => void; feedLine?: (m: number, txt: string, goal?: boolean) => void; feedFast?: () => boolean }, controls: MatchControls): Promise<MatchResult> {
   return new Promise((resolve) => {
     const varzea = cfg.stadium === "varzea";
     const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel", powerPreference: "high-performance" });
@@ -551,8 +551,8 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
 
     // ------------------------------------------------------------- chance moments
     const M = !!cfg.moments;
-    type MState = "auto" | "incoming" | "choose" | "aim" | "caneta" | "resolve";
-    let mState: MState = "auto";
+    type MState = "feed" | "auto" | "incoming" | "choose" | "aim" | "caneta" | "resolve";
+    let mState: MState = M ? "feed" : "auto";
     let resolveT = 0;
     let firstTime = false;
     let usedCaneta = false;
@@ -561,7 +561,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     const schedule: number[] = [];
     if (M) {
       const n = Math.max(1, Math.round(((90 - cfg.startMinute) / 90) * cfg.moments!));
-      for (let i = 0; i < n; i++) schedule.push(cfg.startMinute + 3 + Math.random() * (86 - cfg.startMinute));
+      for (let i = 0; i < n; i++) schedule.push(cfg.startMinute + 4 + Math.random() * (85 - cfg.startMinute));
       schedule.sort((a, b) => a - b);
     }
     const OPT: Record<string, Choice> = {
@@ -693,6 +693,71 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       }
     }
 
+    // ------------------------------------------------------------- live score feed
+    // Between chances the match runs as a scoreboard with play-by-play;
+    // the pitch only opens for good goal / assist chances.
+    const FEED_RATE = 2.6; // match minutes per real second
+    const teamName = (t: number) => teams[t].name;
+    const FILLER = [
+      (t: number) => `Escanteio para o ${teamName(t)}.`,
+      (t: number) => `Chute de fora da área do ${teams[t].short}… pra fora!`,
+      (t: number) => `Grande defesa do goleiro do ${teams[1 - t].short}!`,
+      (t: number) => `Cartão amarelo para um jogador do ${teams[t].short}.`,
+      (t: number) => `Falta perigosa a favor do ${teams[t].short}.`,
+      (t: number) => `Contra-ataque do ${teams[t].short}, mas a zaga corta.`,
+      (t: number) => `Bola na trave do ${teams[t].short}!! Uhhh!`,
+      (t: number) => `O ${teams[t].short} troca passes no meio-campo.`,
+      (t: number) => `Cruzamento do ${teams[t].short}… o goleiro sai e pega.`,
+    ];
+    const str = (t: number) => (t === 0 ? cfg.home.strength : cfg.away.strength);
+    const goalRate = (t: number) => (1.15 / 90) * THREE.MathUtils.clamp(1 + (str(t) - str(1 - t)) / 28, 0.35, 1.9);
+    let nextFiller = cfg.startMinute + 1 + Math.random() * 4;
+    let feedOn = false;
+    function setFeed(on: boolean) {
+      feedOn = on;
+      hud.feed?.(on);
+    }
+    let scoreAtChance = 0;
+    function backToFeed() {
+      if (res.score[0] + res.score[1] === scoreAtChance) hud.feedLine?.(minute, `😩 Uhh! A chance de ${cfg.user.name} não entrou.`);
+      hud.choices(null);
+      mState = "feed";
+      setFeed(true);
+    }
+    function feedStep(realDt: number) {
+      const dm = realDt * FEED_RATE * (hud.feedFast?.() ? 4 : 1);
+      const before = minute;
+      minute = Math.min(90, minute + dm);
+      for (const t of [0, 1])
+        if (Math.random() < goalRate(t) * dm && minute < 89.5) {
+          res.score[t]++;
+          hud.feedLine?.(minute, t === userTeam ? `⚽ GOL do ${teamName(t)}!` : `⚽ Gol do ${teamName(t)}.`, true);
+          if (t === userTeam && navigator.vibrate) navigator.vibrate(60);
+        }
+      if (minute >= nextFiller) {
+        nextFiller = minute + 3 + Math.random() * 6;
+        const t = Math.random() < 0.5 ? 0 : 1;
+        hud.feedLine?.(minute, FILLER[Math.floor(Math.random() * FILLER.length)](t));
+      }
+      if (before < 45 && minute >= 45) hud.feedLine?.(45, "⏸️ Fim do primeiro tempo. Começa o segundo!");
+      hud.clock.textContent = `${Math.floor(minute)}'`;
+      hud.score.innerHTML = `<b>${cfg.home.short}</b> ${res.score[0]} × ${res.score[1]} <b>${cfg.away.short}</b>`;
+      setFeed(true);
+      if (minute >= 90) {
+        hud.feedLine?.(90, "🏁 Fim de jogo!");
+        return finish();
+      }
+      if (schedule.length && minute >= schedule[0]) {
+        schedule.shift();
+        const incoming = Math.random() < 0.4;
+        hud.feedLine?.(minute, incoming ? `🔥 Lançamento para ${cfg.user.name}!` : `🔥 ${cfg.user.name} recebe na entrada da área!`);
+        scoreAtChance = res.score[0] + res.score[1];
+        setFeed(false);
+        pause = 0;
+        setupChance(incoming ? "incoming" : "withBall");
+      }
+    }
+
     // ------------------------------------------------------------- loop
     let last = performance.now();
     let raf = 0;
@@ -702,11 +767,15 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       step(dt, now / 1000);
-      view.render();
+      if (!feedOn || ended) view.render();
     }
     function step(dt: number, t: number) {
       if (ended) return;
       const realDt = dt;
+      if (M && mState === "feed") {
+        feedStep(realDt);
+        return;
+      }
       if (M) {
         const c = controls.choice();
         if (c && mState === "choose") pick(c);
@@ -727,17 +796,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         }
         if (mState === "resolve") {
           resolveT -= realDt;
-          if (resolveT <= 0) mState = "auto";
-        }
-        if (mState === "auto" && pause <= 0) {
-          if (schedule.length && minute >= schedule[0]) {
-            schedule.shift();
-            setupChance(Math.random() < 0.6 ? "withBall" : "incoming");
-          } else if (ball.owner === user && Math.abs(ball.pos.x - goalX(userTeam)) < 26 && minute - lastMoment > 8) {
-            lastMoment = minute;
-            usedCaneta = false;
-            presentWithBall();
-          }
+          if (resolveT <= 0 && pause <= 0.3) backToFeed();
         }
         // slow motion while deciding
         dt *= mState === "choose" ? 0.05 : mState === "aim" ? (firstTime ? 0.1 : 0.04) : mState === "incoming" ? 0.6 : 1;
@@ -1036,6 +1095,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           const mine = scoringTeam === userTeam;
           hud.banner(mine ? "GOOOOL!" : "Gol do adversário", scorer?.user ? `${cfg.user.name.toUpperCase()} marca!` : teams[scoringTeam].name);
           if (navigator.vibrate && mine) navigator.vibrate([80, 60, 160]);
+          if (M) hud.feedLine?.(minute, scorer?.user ? `⚽ GOOOL de ${cfg.user.name}!!` : mine ? `⚽ GOL do ${teams[scoringTeam].name}!${ball.lastPasser?.user ? ` Assistência de ${cfg.user.name}!` : ""}` : `⚽ Gol do ${teams[scoringTeam].name}.`, true);
           pause = 2.8;
           kickoffTeam = 1 - scoringTeam;
           setTimeout(() => kickoff(kickoffTeam), 2600);
@@ -1140,7 +1200,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     addEventListener("resize", onResize);
     camera.position.set(-15, 12, 0);
     raf = requestAnimationFrame(frame);
-    if (cfg.banner) hud.banner(cfg.banner);
+    if (cfg.banner) M ? hud.feedLine?.(cfg.startMinute, `📣 ${cfg.banner}`) : hud.banner(cfg.banner);
     (window as unknown as Record<string, unknown>).__match = { step: (dt: number) => { step(dt, performance.now() / 1000); view.render(); }, res, ball, players, stop: () => cancelAnimationFrame(raf), skip: () => (minute = 89.95), chance: (k: "withBall" | "incoming") => setupChance(k), get state() { return mState; } };
   });
 }

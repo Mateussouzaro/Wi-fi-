@@ -238,6 +238,7 @@ function signaturePad(title: string, sub: string) {
 
 // ---------------------------------------------------------------- matches
 let picked: string | null = null;
+let feedFast = false;
 function matchHud() {
   return {
     choices: (opts: Choice[] | null, title = "") => {
@@ -259,6 +260,18 @@ function matchHud() {
       });
     },
     ticker: (t: string) => ($("mTicker").textContent = t),
+    feed: (on: boolean) => {
+      $("mFeed").classList.toggle("on", on);
+      $("fClock").textContent = $("mClock").textContent;
+      $("fScore").innerHTML = $("mScore").innerHTML;
+    },
+    feedLine: (m: number, txt: string, goal = false) => {
+      const li = document.createElement("li");
+      li.className = goal ? "goal" : "";
+      li.innerHTML = `<b>${Math.floor(m)}'</b> ${txt}`;
+      $("fFeed").prepend(li);
+    },
+    feedFast: () => feedFast,
     score: $("mScore"),
     clock: $("mClock"),
     power: $("powerFill"),
@@ -358,6 +371,13 @@ function bench(opp: C.Club, mine: C.Club, upTo: number, score: [number, number],
 async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number, number], realSec: number, stadium: "varzea" | "estadio", banner?: string, story = false): Promise<MatchResult> {
   if (start > 0) await bench(opp, mine, start, score, story);
   show("match");
+  feedFast = false;
+  $("fFeed").innerHTML = "";
+  $("fSkip").classList.remove("on");
+  $("fSkip").onclick = () => {
+    feedFast = !feedFast;
+    $("fSkip").classList.toggle("on", feedFast);
+  };
   const home = Math.random() < 0.5 || stadium === "varzea";
   const eff = C.effAttrs(s);
   const tc = (c: C.Club) => ({ name: c.name, short: c.short, c1: c.c1, c2: c.c2, strength: c.strength });

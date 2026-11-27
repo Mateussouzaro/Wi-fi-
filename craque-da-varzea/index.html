@@ -120,14 +120,19 @@
       .benchbox { width: min(560px, 100%); max-height: 92vh; display: flex; flex-direction: column; gap: 12px; background: var(--panel); border: 3px solid #fff; padding: 16px; border-radius: 16px; }
       body.pixel .benchbox { border-radius: 0; border-width: 4px; box-shadow: 6px 6px 0 rgba(0,0,0,.5); }
       .btop { display: flex; justify-content: space-between; align-items: center; font-weight: 900; color: var(--muted); }
-      #bClock { background: var(--gold); color: #111; padding: 6px 12px; font-size: 20px; font-variant-numeric: tabular-nums; }
-      #bScore { text-align: center; font-size: 26px; font-weight: 900; }
-      body.pixel #bScore { font-size: 16px; }
-      #bFeed { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 180px; max-height: 50vh; display: flex; flex-direction: column; gap: 6px; }
-      #bFeed li { background: rgba(255,255,255,.06); padding: 8px 10px; font-size: 13px; animation: typein .4s ease-out; }
-      body.pixel #bFeed li { font-size: 9px; line-height: 1.7; }
-      #bFeed li b { color: var(--gold); margin-right: 6px; }
-      #bFeed li.goal { background: rgba(255,210,63,.18); border-left: 4px solid var(--gold); }
+      #mFeed { position: absolute; inset: 0; z-index: 6; display: none; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(#0b1a2e, #13304d 50%, #0b3d2e); }
+      #mFeed.on { display: flex; }
+      #mFeed .fnote { text-align: center; color: var(--muted); font-size: 12px; }
+      body.pixel #mFeed .fnote { font-size: 8px; line-height: 1.8; }
+      #fSkip.on { background: var(--gold); color: #111; }
+      #bClock, .fclock { background: var(--gold); color: #111; padding: 6px 12px; font-size: 20px; font-variant-numeric: tabular-nums; }
+      #bScore, .fscore { text-align: center; font-size: 26px; font-weight: 900; }
+      body.pixel #bScore, body.pixel .fscore { font-size: 16px; }
+      #bFeed, .feed { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 180px; max-height: 50vh; display: flex; flex-direction: column; gap: 6px; }
+      #bFeed li, .feed li { background: rgba(255,255,255,.06); padding: 8px 10px; font-size: 13px; animation: typein .4s ease-out; }
+      body.pixel #bFeed li, body.pixel .feed li { font-size: 9px; line-height: 1.7; }
+      #bFeed li b, .feed li b { color: var(--gold); margin-right: 6px; }
+      #bFeed li.goal, .feed li.goal { background: rgba(255,210,63,.18); border-left: 4px solid var(--gold); }
       #gestHint { position: absolute; bottom: calc(12px + env(safe-area-inset-bottom)); width: 100%; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: 1px; color: rgba(255,255,255,.75); text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 5; }
       #cityHud { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 5; gap: 8px; }
       #cityStatus { background: rgba(0,0,0,.6); padding: 8px 12px; border-radius: 10px; font-weight: 800; font-size: 13px; }
@@ -269,6 +274,15 @@
       <div class="power"><div id="powerFill"></div></div>
       <div id="mTicker"></div>
       <div id="mMoment"><div id="mChoiceTitle"></div><div id="mChoices"></div></div>
+      <div id="mFeed">
+        <div class="benchbox">
+          <div class="btop"><span>📻 AO VIVO</span><span id="fClock" class="fclock">0'</span></div>
+          <div id="fScore" class="fscore"></div>
+          <ul id="fFeed" class="feed"></ul>
+          <div class="fnote">Aguarde… o jogo abre quando surgir uma chance boa pra você ⚽</div>
+          <div class="row"><button class="btn alt" id="fSkip">Acelerar ⏩</button></div>
+        </div>
+      </div>
     </div>
 
     <div id="bench" class="screen">
