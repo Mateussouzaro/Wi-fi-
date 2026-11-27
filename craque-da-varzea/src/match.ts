@@ -184,10 +184,11 @@ export interface MatchControls {
   callPressed: () => boolean;
   choice: () => string | null; // option picked in a chance moment
   aiming: () => Gesture | null; // finger still down
+  spin?: () => { x: number; y: number }; // point touched on the effect ball (−1..1, y up)
   released: () => (Gesture & { tap: boolean; long: boolean }) | null; // consumed once
 }
 
-export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void; feed?: (on: boolean) => void; feedLine?: (m: number, txt: string, goal?: boolean) => void; feedFast?: () => boolean }, controls: MatchControls): Promise<MatchResult> {
+export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void; feed?: (on: boolean) => void; feedLine?: (m: number, txt: string, goal?: boolean) => void; feedFast?: () => boolean; spinUI?: (on: boolean) => void }, controls: MatchControls): Promise<MatchResult> {
   return new Promise((resolve) => {
     const varzea = cfg.stadium === "varzea";
     const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel", powerPreference: "high-performance" });
@@ -443,8 +444,11 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const side = THREE.MathUtils.clamp(g.dx / 160, -1.3, 1.3);
       const power = THREE.MathUtils.clamp(Math.hypot(g.dx, g.dy) / 220, 0.35, 1.1);
       const tz = side * ad * (GOAL_W / 2 + 0.6);
-      const ty = THREE.MathUtils.clamp(0.25 + (g.dy / 320) * 1.6, 0.2, 3.2);
-      return { target: new THREE.Vector3(goalX(userTeam), ty, tz), power, curl: THREE.MathUtils.clamp(g.curl / 90, -1, 1) * ad };
+      // effect ball: hit the left side → curls right, right side → left; top dips, bottom lifts
+      const sp = controls.spin?.() ?? { x: 0, y: 0 };
+      const ty = THREE.MathUtils.clamp(0.25 + (g.dy / 320) * 1.6 - sp.y * 0.7, 0.2, 3.4);
+      const curl = THREE.MathUtils.clamp(g.curl / 90 + sp.x * 1.1, -1.6, 1.6) * ad;
+      return { target: new THREE.Vector3(goalX(userTeam), ty, tz), power, curl, topspin: sp.y };
     };
     const gk = (t: number) => players.find((p) => p.team === t && p.role === "GK")!;
 
@@ -488,13 +492,13 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     }
 
     function dragShot(g: Gesture) {
-      const { target, power, curl } = aimFromGesture(g);
+      const { target, power, curl, topspin } = aimFromGesture(g);
       const acc = accuracyAt(g.held);
       // error grows when the ring was not closed, shrinks with the shooting attribute
       const err = (1 - acc) * (1.4 - user.shot) * 3.2;
       target.z += (Math.random() - 0.5) * err * 2;
       target.y = Math.max(0.15, target.y + (Math.random() - 0.4) * err);
-      const sp = 17 + 15 * power * (0.75 + user.shot * 0.4);
+      const sp = (17 + 15 * power * (0.75 + user.shot * 0.4)) * (1 + topspin * 0.08);
       const dist = kick(user, target.clone().setZ(target.z - curl * 2.2), sp, 0);
       ball.vel.y = Math.min(8, (target.y + 4.9 * Math.pow(dist / sp, 2)) / Math.max(0.1, dist / sp) - 0.5);
       ballCurl = curl * 7;
@@ -618,6 +622,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       skillRing.visible = false;
       if (title) hud.banner(title, "arraste até um companheiro = passe");
       hud.choices(null, "ARRASTE • CURVE • CHUTE");
+      hud.spinUI?.(true);
     }
     // tap timing on the skill ring: beat the defender (he goes to ground) or lose the ball
     function resolveSkill(err: number) {
@@ -678,6 +683,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     let kickoffWait = false;
     function endMoment(after = 2.2) {
       resolveAge = 0;
+      hud.spinUI?.(false);
       hud.choices(null);
       mState = "resolve";
       resolveT = after;

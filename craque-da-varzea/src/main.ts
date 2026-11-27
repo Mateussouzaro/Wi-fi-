@@ -310,6 +310,43 @@ function signaturePad(title: string, sub: string) {
 // ---------------------------------------------------------------- matches
 let picked: string | null = null;
 let feedFast = false;
+// effect ball: where the player touched it (−1..1, y up)
+let spin = { x: 0, y: 0 };
+{
+  const sb = $("spinBall");
+  const set = (e: PointerEvent) => {
+    const r = sb.getBoundingClientRect();
+    let x = ((e.clientX - r.left) / r.width) * 2 - 1,
+      y = -(((e.clientY - r.top) / r.height) * 2 - 1);
+    const l = Math.hypot(x, y);
+    if (l > 0.85) {
+      x *= 0.85 / l;
+      y *= 0.85 / l;
+    }
+    spin = { x, y };
+    const dot = $("spinDot");
+    dot.style.left = `${50 + x * 50}%`;
+    dot.style.top = `${50 - y * 50}%`;
+    $("spinLbl").textContent = Math.hypot(x, y) < 0.2 ? "SEM EFEITO" : (Math.abs(x) > 0.3 ? (x < 0 ? "CURVA ↪" : "↩ CURVA") : "") + (y > 0.3 ? " ⬇CAI" : y < -0.3 ? " ⬆COBERTURA" : "");
+  };
+  let down = false;
+  sb.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    down = true;
+    set(e);
+  });
+  sb.addEventListener("pointermove", (e) => {
+    e.stopPropagation();
+    if (down) set(e);
+  });
+  const stop = (e: PointerEvent) => {
+    e.stopPropagation();
+    down = false;
+  };
+  sb.addEventListener("pointerup", stop);
+  sb.addEventListener("pointercancel", stop);
+}
 function matchHud() {
   return {
     choices: (opts: Choice[] | null, title = "") => {
@@ -343,6 +380,14 @@ function matchHud() {
       $("fFeed").prepend(li);
     },
     feedFast: () => feedFast,
+    spinUI: (on: boolean) => {
+      $("spinWrap").classList.toggle("on", on);
+      if (on) {
+        spin = { x: 0, y: 0 };
+        $("spinDot").style.left = $("spinDot").style.top = "50%";
+        $("spinLbl").textContent = "TOQUE NA BOLA P/ EFEITO";
+      }
+    },
     score: $("mScore"),
     clock: $("mClock"),
     power: $("powerFill"),
@@ -369,6 +414,7 @@ const matchControls = {
     return c;
   },
   aiming: () => (gest.active && gest.pts.length ? gestureOf(gest.pts, gest.t0) : null),
+  spin: () => spin,
   released: () => {
     const g = gest.done;
     gest.done = null;
