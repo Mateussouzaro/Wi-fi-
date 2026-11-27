@@ -503,6 +503,19 @@ return Tune
 	local _GSteerC=0
 	local _GThrot=0
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false
@@ -3528,7 +3541,7 @@ local Tune = {}
 
 --[[Misc]]
 	Tune.LoadDelay		= 0.001		-- Delay before initializing chassis (in seconds)
-	Tune.AutoStart		= false		-- Set to false if using manual ignition plugin
+	Tune.AutoStart		= true		-- Set to false if using manual ignition plugin
 	Tune.AutoFlip		= true		-- Set to false if using manual flip plugin
 	Tune.AutoUpdate		= false		-- Automatically applies minor updates to the chassis if any are found.
 									-- Will NOT apply major updates, but will notify you of any.
@@ -3755,7 +3768,7 @@ local Tune = {}
 --[[Transmission]]
 	Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-	Tune.TransModes		= {"Semi","Auto"}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -5851,6 +5864,19 @@ end
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -9913,7 +9939,7 @@ local Tune = {}
 
 --[[Misc]]
 	Tune.LoadDelay		= .1		-- Delay before initializing chassis (in seconds)
-	Tune.AutoStart		= false		-- Set to false if using manual ignition plugin
+	Tune.AutoStart		= true		-- Set to false if using manual ignition plugin
 	Tune.AutoFlip		= true		-- Set to false if using manual flip plugin
 	
 --[[Wheel Alignment]]
@@ -12261,6 +12287,19 @@ return "6.52S2"]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Prop
 	local _GSteerC=0
 	local _GThrot=0
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false
@@ -13487,7 +13526,7 @@ local Tune = {}
 
 --[[Misc]]
 Tune.LoadDelay		= 0		-- Delay before initializing chassis (in seconds)
-Tune.AutoStart		= false		-- Set to false if using manual ignition plugin
+Tune.AutoStart		= true		-- Set to false if using manual ignition plugin
 Tune.AutoFlip		= true		-- Set to false if using manual flip plugin
 Tune.AutoUpdate		= false		-- Automatically applies minor updates to the chassis if any are found.
 -- Will NOT apply major updates, but will notify you of any.
@@ -16965,6 +17004,19 @@ elseif setupmode == "Auto" then
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -19378,7 +19430,7 @@ Tune.TCSLimit		= 50		-- Minimum amount of torque at max reduction (in percent)
 --[[Transmission]]
 Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-Tune.TransModes		= {"Semi"}												--[[
+Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -23237,6 +23289,19 @@ end)]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Properties></It
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -25485,7 +25550,7 @@ Tune.TCSGradient	= 20		-- Slip speed gradient between 0 to max reduction (in SPS
 Tune.TCSLimit		= 10		-- Minimum amount of torque at max reduction (in percent)
 
 --[[Transmission]]
-Tune.TransModes		= {"Auto"}								--[[
+Tune.TransModes		= {"Auto", "Semi", "Manual"}								--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -28217,6 +28282,19 @@ return "6.52S2"]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Prop
 	local _GSteerC=0
 	local _GThrot=0
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false
@@ -29366,7 +29444,7 @@ local Tune = {}
 --[[Transmission]]
 	Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-	Tune.TransModes		= {"Semi","Manual","Auto"}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -32114,6 +32192,19 @@ end)]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Properties></It
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -34298,7 +34389,7 @@ local Tune = {}
 
 --[[Misc]]
 	Tune.LoadDelay		= 3.0		-- Delay before initializing chassis (in seconds)
-	Tune.AutoStart		= false		-- Set to false if using manual ignition plugin
+	Tune.AutoStart		= true		-- Set to false if using manual ignition plugin
 	Tune.AutoFlip		= true		-- Set to false if using manual flip plugin
 	Tune.AutoUpdate		= true		-- Automatically applies minor updates to the chassis if any are found.
 									-- Will NOT apply major updates, but will notify you of any.
@@ -34527,7 +34618,7 @@ local Tune = {}
 --[[Transmission]]
 	Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-	Tune.TransModes		= {"Semi","Manual","Auto"}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -38049,6 +38140,19 @@ end)
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -43063,6 +43167,19 @@ return "6.52S2"]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Prop
 	local _GSteerC=0
 	local _GThrot=0
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false
@@ -44100,7 +44217,7 @@ local Tune = {}
 	Tune.TCSLimit		= 10		-- Minimum amount of torque at max reduction (in percent)
 	
 --[[Transmission]]
-	Tune.TransModes		= {"Auto","Semi",}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -46431,6 +46548,19 @@ return MiscWeld]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Prop
 	local _GThrot=0
 	local _GThrotShift=1
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false
@@ -47736,7 +47866,7 @@ local Tune = {}
 --[[Transmission]]
 	Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-	Tune.TransModes		= {"Semi","Manual","Auto"}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -50483,6 +50613,19 @@ end)]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Properties></It
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -53433,7 +53576,7 @@ local Tune = {}
 --[[Transmission]]
 	Tune.Clutch			= true		-- Implements a realistic clutch, change to "false" for the chassis to act like AC6.81T.
 
-	Tune.TransModes		= {"Manual"}												--[[
+	Tune.TransModes		= {"Auto", "Semi", "Manual"}												--[[
 	[Modes]
 		"Auto"		: Automatic shifting
 		"Semi"		: Clutchless manual shifting, dual clutch transmission
@@ -56579,6 +56722,19 @@ script:Destroy()]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Pro
 	local _InThrot=0
 	local _IThrot=_Tune.IdleThrottle/100
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	local _InBrake=0
 	local _IBrake=0
 	
@@ -60977,6 +61133,19 @@ return "6.52S2"]]></ProtectedString><int64 name="SourceAssetId">-1</int64></Prop
 	local _GSteerC=0
 	local _GThrot=0
 	local _GBrake=0
+
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+
 	
 	local _ClutchOn = true
 	local _ClPressing = false

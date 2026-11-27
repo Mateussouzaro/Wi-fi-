@@ -130,7 +130,9 @@ Color3 = {
 }
 local function stub(name) return { new = function(...) return { __type = name, args = { ... } } end } end
 ColorSequence, NumberSequence, NumberRange, NumberSequenceKeypoint, TweenInfo, PhysicalProperties = stub("CS"), stub("NS"), stub("NR"), stub("NSK"), stub("TI"), stub("PP")
-UDim2 = stub("UDim2")
+UDim2 = { new = function(xs, xo, ys, yo)
+	return { __type = "UDim2", args = { xs, xo, ys, yo }, X = { Scale = xs or 0, Offset = xo or 0 }, Y = { Scale = ys or 0, Offset = yo or 0 } }
+end }
 UDim = stub("UDim")
 Enum = setmetatable({}, { __index = function(_, k) return setmetatable({}, { __index = function(_, v) return k .. "." .. v end }) end })
 

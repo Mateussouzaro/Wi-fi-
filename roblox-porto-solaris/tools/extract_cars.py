@@ -53,6 +53,37 @@ def src_of(i):
     return v.decode("utf-8", "replace") if isinstance(v, bytes) else v
 
 
+MOBILE_SNIPPET = """
+	-- [Porto Solaris] on-screen pedals and steering for phones (set by the ControlesMobile script)
+	do
+		local _mobPlayer = game:GetService("Players").LocalPlayer
+		game:GetService("RunService").Heartbeat:Connect(function()
+			if _mobPlayer:GetAttribute("MobAtivo") then
+				_GThrot = math.max(_Tune.IdleThrottle / 100, _mobPlayer:GetAttribute("MobGas") or 0)
+				_GBrake = _mobPlayer:GetAttribute("MobFreio") or 0
+				_GSteerT = _mobPlayer:GetAttribute("MobVolante") or 0
+			end
+		end)
+	end
+"""
+patched = {"tune": 0, "drive": 0}
+
+
+def mobile_patch(name, src):
+    """phones: automatic gearbox first, engine starts by itself, Drive reads the touch pedals"""
+    if name == "A-Chassis Tune":
+        src, n1 = re.subn(r'(Tune\.TransModes\s*=\s*)\{[^}]*\}', r'\1{"Auto", "Semi", "Manual"}', src, count=1)
+        src, n2 = re.subn(r'(Tune\.AutoStart\s*=\s*)\w+', r'\1true', src, count=1)
+        patched["tune"] += 1 if (n1 and n2) else 0
+    elif name == "Drive" and "local _GBrake" in src and "local _Tune" in src:
+        lines = src.split("\n")
+        i = max(k for k, l in enumerate(lines) if re.match(r"^\s*local\s+(_GThrot|_GBrake|_GSteerT)\b", l))
+        lines.insert(i + 1, MOBILE_SNIPPET)
+        src = "\n".join(lines)
+        patched["drive"] += 1
+    return src
+
+
 def strip_scripts(inst, keep_clean=False, where=""):
     kept = []
     for c in inst.children:
@@ -65,6 +96,8 @@ def strip_scripts(inst, keep_clean=False, where=""):
             if "LoadAsset(" in src:
                 src = re.sub(r'game:GetService\("InsertService"\):LoadAsset\(\d+\)', "nil", src)
                 c.props["Source"] = ("string", src)
+            src = mobile_patch(nm(c), src)
+            c.props["Source"] = ("string", src)
         kept.append(c)
     inst.children = kept
     for c in inst.children:
@@ -146,7 +179,7 @@ def main(pack):
     for r in removed:
         print("  removed:", r)
     (ROOT / "assets/cars.xml").write_text("".join(out), encoding="utf-8")
-    print("cars.xml", sum(len(x) for x in out), "bytes")
+    print("cars.xml", sum(len(x) for x in out), "bytes", "| mobile patches:", patched)
 
 
 if __name__ == "__main__":

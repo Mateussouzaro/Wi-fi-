@@ -419,7 +419,7 @@ corner(help, 18)
 stroke(help, GOLD, 2)
 help.Visible = false
 text(help, "COMO JOGAR", UDim2.new(1, 0, 0, 34), UDim2.new(0, 0, 0, 10), Enum.Font.GothamBlack, 22, GOLD)
-text(help, "🚗  Toque no ícone de CARRO na barra de cima para tirar seus carros da garagem.\n🏪  Compre carros novos e escolha a cor na concessionária SOLARIS MOTORS.\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n🏁  CORRIDA: passe pela LARGADA na praia indo para a direita e siga a luz dourada.\n💨  DRIFT: derrape na Arena de Drift para somar pontos e combo.\n📢  ENCONTRO: a cada 8 min, leve o carro ao estacionamento e vote no mais bonito.\n💰  Descubra lugares do mapa para ganhar créditos.", UDim2.new(1, -30, 0, 290), UDim2.new(0, 15, 0, 46), Enum.Font.GothamBold, 13, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
+text(help, "🚗  Toque no ícone de CARRO na barra de cima para tirar seus carros da garagem.\n🏪  Compre carros novos e escolha a cor na concessionária SOLARIS MOTORS.\n🕹️  Perto do carro toque em ENTRAR. Dirija com ACELERAR, FREIO/RÉ e ◀ ▶; saia com SAIR.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n🏁  CORRIDA: passe pela LARGADA na praia indo para a direita e siga a luz dourada.\n💨  DRIFT: derrape na Arena de Drift para somar pontos e combo.\n📢  ENCONTRO: a cada 8 min, leve o carro ao estacionamento e vote no mais bonito.\n💰  Descubra lugares do mapa para ganhar créditos.", UDim2.new(1, -30, 0, 290), UDim2.new(0, 15, 0, 46), Enum.Font.GothamBold, 13, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
 local hClose = button(help, "ENTENDI", UDim2.new(0, 140, 0, 36), UDim2.new(0.5, -70, 1, -46), GOLD)
 hClose.TextColor3 = DARK
 hClose.MouseButton1Click:Connect(function() help.Visible = false end)
@@ -755,7 +755,7 @@ end)
 -- ------------------------------------------------------------------ places to discover + tutorial
 local TUT = {
 	{ "PASSO 1 de 5", "Toque no ícone de CARRO na barra de cima, escolha um carro e entre nele." },
-	{ "PASSO 2 de 5", "Use o analógico para dirigir. Siga a luz dourada até o POSTO AURORA." },
+	{ "PASSO 2 de 5", "Use ACELERAR, FREIO/RÉ e ◀ ▶ para dirigir. Siga a luz dourada até o POSTO AURORA." },
 	{ "PASSO 3 de 5", "Agora volte ao ENCONTRO SOLARIS e pare em uma vaga livre (siga a luz)." },
 	{ "PASSO 4 de 5", "Saia do carro (botão de pular) e faça uma POSE 😎 do lado dele." },
 	{ "PASSO 5 de 5", "Toque em 📷 para o MODO FOTO e tire um print do seu carro!" },

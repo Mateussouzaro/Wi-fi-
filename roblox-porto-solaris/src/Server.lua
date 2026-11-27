@@ -1751,6 +1751,20 @@ Dirigir.OnServerInvoke = function(plr, nome)
 	return true
 end
 
+-- ENTRAR button (ControlesMobile): sit the player in a nearby car seat, checked here
+local EntrarCarro = remote("EntrarCarro")
+EntrarCarro.OnServerEvent:Connect(function(plr, seat)
+	local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+	local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+	if not (hum and hrp) or hum.Health <= 0 or hum.SeatPart then return end
+	if typeof(seat) ~= "Instance" or not seat:IsA("VehicleSeat") or seat.Disabled or seat.Occupant then return end
+	if not seat:IsDescendantOf(workspace) or (seat.Position - hrp.Position).Magnitude > 16 then return end
+	local car = seat.Parent
+	local owner = car and car:GetAttribute("Dono")
+	if owner ~= nil and owner ~= plr.UserId then return end
+	seat:Sit(hum)
+end)
+
 -- the green area at the counter opens the catalogue
 do
 	local prompt = map:FindFirstChild("AbrirCatalogo", true)

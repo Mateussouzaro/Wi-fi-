@@ -15,7 +15,8 @@ server = (root / "src/Server.lua").read_text()
 client = (root / "src/Client.lua").read_text()
 catalogo = (root / "src/Catalogo.lua").read_text()
 loja = (root / "src/Concessionaria.lua").read_text()
-assert "]]>" not in server + client + catalogo + loja
+controles = (root / "src/ControlesMobile.lua").read_text()
+assert "]]>" not in server + client + catalogo + loja + controles
 ref = iter(f"RBX{i:032X}" for i in range(1, 1000))
 
 
@@ -179,7 +180,7 @@ xml += item("Workspace", "Workspace", '<float name="Gravity">196.2</float>')
 xml += item("Lighting", "Lighting", '<token name="Technology">4</token>')
 xml += item("ReplicatedStorage", "ReplicatedStorage", children=rs_children)
 xml += item("ServerScriptService", "ServerScriptService", children=script("Script", "PortoSolaris", server) + sss_fortune)
-xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja)))
+xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja) + script("LocalScript", "ControlesMobile", controles)))
 xml += item("StarterGui", "StarterGui", children=kids("Place in StarterGui"))
 cars_xml = (root / "assets/cars.xml").read_text(encoding="utf-8")
 xml += item("ServerStorage", "ServerStorage", children=item("Folder", "Vehicles", children=cars_xml))
