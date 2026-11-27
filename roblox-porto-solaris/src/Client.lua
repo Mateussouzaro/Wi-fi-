@@ -436,6 +436,217 @@ Notify.OnClientEvent:Connect(function(kind, a, b)
 	end
 end)
 
+-- ------------------------------------------------------------------ DRIFT, RACE and MEET EVENTS
+local Score = ReplicatedStorage:WaitForChild("Score")
+local EventR = ReplicatedStorage:WaitForChild("Evento")
+local Vote = ReplicatedStorage:WaitForChild("Voto")
+local DR = {}
+for v in string.gmatch(ReplicatedStorage:WaitForChild("Drift").Value, "[^|]+") do table.insert(DR, tonumber(v)) end
+local CHECKS = {}
+for x, z in string.gmatch(ReplicatedStorage:WaitForChild("Corrida").Value, "([%-%d%.]+),([%-%d%.]+)") do
+	table.insert(CHECKS, Vector3.new(tonumber(x), 0, tonumber(z)))
+end
+local function fmtTime(t)
+	return string.format("%d:%05.2f", math.floor(t / 60), t % 60)
+end
+
+-- big centre-top label used by drift and race
+local bigBox = frame(gui, UDim2.new(0, 300, 0, 64), UDim2.new(0.5, -150, 0, 110), DARK, 0.2)
+corner(bigBox, 16)
+stroke(bigBox, rgb(255, 70, 70), 2)
+bigBox.Visible = false
+local bigText = text(bigBox, "", UDim2.new(1, -16, 0, 38), UDim2.new(0, 8, 0, 2), Enum.Font.GothamBlack, 28, Color3.new(1, 1, 1))
+local smallText = text(bigBox, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 8, 0, 40), Enum.Font.GothamBold, 14, GOLD)
+
+local function driveSeat()
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local s = hum and hum.SeatPart
+	if s and s:IsA("VehicleSeat") then return s end
+	return nil
+end
+
+-- drift
+local drift = { pts = 0, combo = 1, slideT = 0, idleT = 0, active = false, wasIn = false }
+local function endDrift()
+	if drift.pts >= 100 then
+		Score:FireServer("drift", math.floor(drift.pts))
+		toast("💨 Drift encerrado: " .. math.floor(drift.pts) .. " pontos", rgb(255, 90, 90))
+	end
+	drift.pts, drift.combo, drift.slideT, drift.idleT, drift.active = 0, 1, 0, 0, false
+end
+
+-- race
+local race = { on = false, idx = 2, t = 0, cool = 0 }
+local function stopRace(msg)
+	race.on = false
+	race.cool = 6
+	setTarget(nil)
+	if msg then toast(msg, rgb(255, 120, 120)) end
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	local s = driveSeat()
+	local pos = s and s.Position
+	-- ---- drift arena
+	local inside = pos and math.abs(pos.X - DR[1]) < DR[3] / 2 and math.abs(pos.Z - DR[2]) < DR[4] / 2
+	if inside and not drift.wasIn then toast("💨 ARENA DE DRIFT • derrape para ganhar pontos!", rgb(255, 90, 90)) end
+	drift.wasIn = inside and true or false
+	if inside then
+		local v = s.AssemblyLinearVelocity
+		local flat = Vector3.new(v.X, 0, v.Z)
+		local spd = flat.Magnitude
+		local look = Vector3.new(s.CFrame.LookVector.X, 0, s.CFrame.LookVector.Z)
+		local ang = 0
+		if spd > 1 and look.Magnitude > 0.1 then
+			ang = math.deg(math.acos(math.clamp(flat.Unit:Dot(look.Unit), -1, 1)))
+		end
+		if spd > 25 and ang > 12 and ang < 100 then
+			drift.active = true
+			drift.idleT = 0
+			drift.slideT = drift.slideT + dt
+			drift.combo = math.min(5, 1 + math.floor(drift.slideT / 2))
+			drift.pts = drift.pts + (spd * ang / 30) * drift.combo * dt
+		else
+			drift.slideT = math.max(0, drift.slideT - dt * 2)
+			if drift.active then
+				drift.idleT = drift.idleT + dt
+				if spd < 3 and drift.idleT > 2 then endDrift() end
+			end
+		end
+		if drift.pts > 0 then
+			bigBox.Visible = true
+			bigText.Text = "DRIFT  " .. math.floor(drift.pts)
+			bigText.TextColor3 = drift.slideT > 0 and rgb(255, 90, 90) or Color3.new(1, 1, 1)
+			smallText.Text = "COMBO x" .. drift.combo .. "  •  ângulo " .. math.floor(ang) .. "°"
+		end
+	elseif drift.active or drift.pts > 0 then
+		endDrift()
+	end
+
+	-- ---- race
+	race.cool = math.max(0, race.cool - dt)
+	if race.on then
+		race.t = race.t + dt
+		if not s then
+			stopRace("🏁 Corrida cancelada: você saiu do carro")
+		elseif race.t > 300 then
+			stopRace("🏁 Corrida cancelada: tempo esgotado")
+		else
+			local target = CHECKS[race.idx]
+			local flatPos = Vector3.new(pos.X, 0, pos.Z)
+			if (flatPos - target).Magnitude < 30 then
+				if race.idx >= #CHECKS then
+					local t = race.t
+					stopRace(nil)
+					sDone:Play()
+					Score:FireServer("lap", t)
+					toast("🏁 Volta completa: " .. fmtTime(t), GOLD)
+				else
+					sClick:Play()
+					race.idx = race.idx + 1
+					setTarget(CHECKS[race.idx])
+				end
+			end
+			if race.on then
+				bigBox.Visible = true
+				bigText.Text = "🏁 " .. fmtTime(race.t)
+				bigText.TextColor3 = Color3.new(1, 1, 1)
+				smallText.Text = "Ponto " .. (race.idx - 1) .. "/" .. (#CHECKS - 1) .. "  •  siga a luz dourada"
+			end
+		end
+	elseif s and race.cool <= 0 and not inside then
+		local flatPos = Vector3.new(pos.X, 0, pos.Z)
+		if (flatPos - CHECKS[1]).Magnitude < 16 and s.AssemblyLinearVelocity.Magnitude > 8 then
+			race.on, race.idx, race.t = true, 2, 0
+			sWhoosh:Play()
+			toast("🏁 CORRIDA DO PORTO! Siga os pontos e volte à largada", GOLD)
+			setTarget(CHECKS[2])
+		end
+	end
+	if not race.on and drift.pts <= 0 then bigBox.Visible = false end
+end)
+
+-- meet events + voting panel
+local votePanel = frame(gui, UDim2.new(0, 340, 0, 300), UDim2.new(0.5, -170, 0.5, -150), DARK, 0.05)
+corner(votePanel, 18)
+stroke(votePanel, GOLD, 2)
+votePanel.Visible = false
+local vTitle = text(votePanel, "⭐ VOTE NO CARRO MAIS BONITO", UDim2.new(1, -20, 0, 34), UDim2.new(0, 10, 0, 6), Enum.Font.GothamBlack, 17, GOLD)
+local vTimer = text(votePanel, "", UDim2.new(1, -20, 0, 18), UDim2.new(0, 10, 0, 38), Enum.Font.GothamBold, 13, Color3.new(0.8, 0.8, 0.8))
+local vList = Instance.new("ScrollingFrame")
+vList.Size = UDim2.new(1, -20, 1, -110)
+vList.Position = UDim2.new(0, 10, 0, 60)
+vList.BackgroundTransparency = 1
+vList.ScrollBarThickness = 5
+vList.Parent = votePanel
+local vLayout = Instance.new("UIListLayout")
+vLayout.Padding = UDim.new(0, 6)
+vLayout.Parent = vList
+local vClose = button(votePanel, "Fechar", UDim2.new(0, 120, 0, 34), UDim2.new(0.5, -60, 1, -44), rgb(60, 30, 30))
+vClose.MouseButton1Click:Connect(function() votePanel.Visible = false end)
+local voteEnds = 0
+local function lockVotes()
+	for _, b in ipairs(vList:GetChildren()) do
+		if b:IsA("TextButton") then b.Active = false; b.AutoButtonColor = false; b.BackgroundTransparency = 0.5 end
+	end
+end
+local _ = vTitle
+
+EventR.OnClientEvent:Connect(function(kind, a, b, c)
+	if kind == "announce" then
+		sWhoosh:Play()
+		toast("📢 Encontro Solaris em " .. a .. "s! Leve seu carro ao estacionamento", GOLD)
+	elseif kind == "start" then
+		sDone:Play()
+		toast("📢 O ENCONTRO COMEÇOU! Estacione no Encontro Solaris (" .. math.floor(a / 60) .. " min)", GOLD)
+	elseif kind == "vote" then
+		for _, ch in ipairs(vList:GetChildren()) do
+			if ch:IsA("TextButton") then ch:Destroy() end
+		end
+		local n = 0
+		for _, p in ipairs(a) do
+			if p.id ~= player.UserId then
+				n = n + 1
+				local bt = button(vList, p.name .. "  •  " .. p.car, UDim2.new(1, -8, 0, 40), UDim2.new(0, 0, 0, 0), rgb(35, 38, 46))
+				bt.TextSize = 14
+				bt.MouseButton1Click:Connect(function()
+					if not bt.Active then return end
+					Vote:FireServer(p.id)
+					lockVotes()
+					bt.BackgroundColor3 = rgb(40, 120, 60)
+					bt.BackgroundTransparency = 0
+				end)
+			end
+		end
+		vList.CanvasSize = UDim2.new(0, 0, 0, n * 46)
+		voteEnds = os.clock() + (b or 30)
+		votePanel.Visible = n > 0
+		task.spawn(function()
+			while votePanel.Visible and os.clock() < voteEnds do
+				vTimer.Text = "Termina em " .. math.ceil(voteEnds - os.clock()) .. "s • você não pode votar em si mesmo"
+				task.wait(0.25)
+			end
+			votePanel.Visible = false
+		end)
+	elseif kind == "result" then
+		votePanel.Visible = false
+		if a then
+			sDone:Play()
+			toast("🏆 " .. a .. " venceu o encontro com " .. tostring(b) .. " (" .. tostring(c) .. " votos)!", GOLD)
+		else
+			toast("Encontro encerrado: ninguém recebeu votos", rgb(200, 200, 200))
+		end
+	elseif kind == "few" then
+		toast("Encontro encerrado: precisa de 2+ pessoas para a votação", rgb(200, 200, 200))
+	elseif kind == "record" then
+		sDone:Play()
+		toast(a, rgb(255, 230, 120))
+	end
+end)
+Notify.OnClientEvent:Connect(function(kind)
+	if kind == "voted" then toast("✅ Voto registrado!", rgb(120, 255, 140)) end
+end)
+
 -- ------------------------------------------------------------------ driving (runs for the car you are driving)
 local car, chassis, seat, lv, av
 local speed = 0

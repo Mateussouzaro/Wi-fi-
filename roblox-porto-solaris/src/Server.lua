@@ -1231,6 +1231,154 @@ Progress.OnServerEvent:Connect(function(plr, kind, value)
 	end
 end)
 
+-- ------------------------------------------------------------------ RECORDS, DRIFT, RACE and MEET EVENTS
+local Score = remote("Score")
+local EventR = remote("Evento")
+local Vote = remote("Voto")
+local records = { lap = nil, lapName = "—", drift = 0, driftName = "—", meetName = "—" }
+pcall(function()
+	local r = store and store:GetAsync("records")
+	if type(r) == "table" then
+		for k, v in pairs(r) do records[k] = v end
+	end
+end)
+local function fmtTime(t)
+	return string.format("%d:%05.2f", math.floor(t / 60), t % 60)
+end
+local function refreshBoard()
+	recordsBoard.Text = "🏆 RECORDES\n\n🏁 Corrida: " .. (records.lap and (fmtTime(records.lap) .. "  " .. records.lapName) or "—")
+		.. "\n💨 Drift: " .. (records.drift > 0 and (tostring(records.drift) .. "  " .. records.driftName) or "—")
+		.. "\n⭐ Carro mais bonito: " .. records.meetName
+end
+local function saveRecords()
+	task.spawn(function()
+		pcall(function() if store then store:SetAsync("records", records) end end)
+	end)
+end
+refreshBoard()
+
+-- car next to a player (the one they sit in, or the closest model with a DriveSeat)
+local function carOf(plr)
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.SeatPart and hum.SeatPart.Parent then return hum.SeatPart.Parent end
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+	local best, bd = nil, 30
+	for _, m in ipairs(workspace:GetChildren()) do
+		if m:IsA("Model") and m:FindFirstChild("DriveSeat") then
+			local d = (m.DriveSeat.Position - root.Position).Magnitude
+			if d < bd then best, bd = m, d end
+		end
+	end
+	return best
+end
+
+local lastScore = {}
+Score.OnServerEvent:Connect(function(plr, kind, value)
+	local d = data[plr]
+	value = tonumber(value)
+	if not d or not value then return end
+	local now = os.clock()
+	if lastScore[plr] and now - lastScore[plr] < 3 then return end
+	lastScore[plr] = now
+	if kind == "drift" then
+		local pts = math.clamp(math.floor(value), 0, 60000)
+		if pts < 100 then return end
+		if pts > (d.bestDrift or 0) then d.bestDrift = pts end
+		if pts > records.drift then
+			records.drift = pts
+			records.driftName = plr.Name
+			refreshBoard()
+			saveRecords()
+			EventR:FireAllClients("record", "💨 Novo recorde de DRIFT: " .. pts .. " por " .. plr.Name)
+		end
+		addCredits(plr, math.clamp(math.floor(pts / 150), 5, 200), "Drift: " .. pts .. " pontos")
+	elseif kind == "lap" then
+		-- the loop is about 3,200 studs long: anything under 20 s is not a real lap
+		if value < 20 or value > 600 then return end
+		local better = (not d.bestLap) or value < d.bestLap
+		if better then d.bestLap = value end
+		local bonus = 0
+		if not records.lap or value < records.lap then
+			records.lap = value
+			records.lapName = plr.Name
+			refreshBoard()
+			saveRecords()
+			bonus = 200
+			EventR:FireAllClients("record", "🏁 Novo recorde da CORRIDA: " .. fmtTime(value) .. " por " .. plr.Name)
+		end
+		addCredits(plr, 100 + bonus + (better and 50 or 0), "Corrida: " .. fmtTime(value) .. (better and " (seu melhor!)" or ""))
+	end
+end)
+
+-- meet events: every 8 minutes, at the Encontro Solaris lot
+local LOT = { x1 = 30, x2 = 182, z1 = -52, z2 = 52 }
+local function inLot(plr)
+	local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+	if not root then return false end
+	local p = root.Position
+	return p.X > LOT.x1 and p.X < LOT.x2 and p.Z > LOT.z1 and p.Z < LOT.z2
+end
+local votes, voters, participants = {}, {}, {}
+Vote.OnServerEvent:Connect(function(plr, targetId)
+	targetId = tonumber(targetId)
+	if not targetId or voters[plr] or targetId == plr.UserId then return end
+	if not participants[targetId] then return end
+	voters[plr] = true
+	votes[targetId] = (votes[targetId] or 0) + 1
+	Notify:FireClient(plr, "voted")
+end)
+task.spawn(function()
+	task.wait(90)
+	while true do
+		EventR:FireAllClients("announce", 60)
+		task.wait(60)
+		EventR:FireAllClients("start", 120)
+		task.wait(120)
+		-- who is at the meet with a car?
+		participants = {}
+		local list = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if inLot(plr) then
+				local car = carOf(plr)
+				local carName = car and (car:GetAttribute("Nome") or car.Name) or "a pé"
+				participants[plr.UserId] = { plr = plr, car = carName }
+				table.insert(list, { id = plr.UserId, name = plr.DisplayName, car = carName })
+			end
+		end
+		if #list >= 2 then
+			votes, voters = {}, {}
+			EventR:FireAllClients("vote", list, 30)
+			task.wait(32)
+			local winner, top = nil, 0
+			for id, n in pairs(votes) do
+				if n > top then winner, top = id, n end
+			end
+			for id, info in pairs(participants) do
+				if info.plr.Parent then addCredits(info.plr, 50, "Participou do encontro") end
+				local _ = id
+			end
+			if winner and participants[winner] and participants[winner].plr.Parent then
+				local w = participants[winner]
+				addCredits(w.plr, 300, "Carro mais bonito do encontro!")
+				records.meetName = w.plr.Name .. " (" .. w.car .. ")"
+				refreshBoard()
+				saveRecords()
+				EventR:FireAllClients("result", w.plr.DisplayName, w.car, top)
+			else
+				EventR:FireAllClients("result", nil)
+			end
+		else
+			for _, info in pairs(participants) do
+				if info.plr.Parent then addCredits(info.plr, 50, "Participou do encontro") end
+			end
+			EventR:FireAllClients("few", #list)
+		end
+		task.wait(8 * 60 - 212)
+	end
+end)
+
 -- ------------------------------------------------------------------ day/night cycle and animations
 local DAY_LENGTH = 24 * 60 -- seconds for a full day
 local last = os.clock()
