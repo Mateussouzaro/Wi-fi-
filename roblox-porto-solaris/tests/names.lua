@@ -1,0 +1,15 @@
+return {
+  ["Brava Hellstar"] = true,
+  ["Vulpes GT-S"] = true,
+  ["Brava Charger Wide"] = true,
+  ["Cadenza V"] = true,
+  ["Mistral W16"] = true,
+  ["Toro SUV"] = true,
+  ["Sora GT"] = true,
+  ["Mustero Mach"] = true,
+  ["Aurion B9"] = true,
+  ["Kaiser Roadster"] = true,
+  ["Trackhawk SRT"] = true,
+  ["Pontis G8"] = true,
+  ["Superbo"] = true,
+}

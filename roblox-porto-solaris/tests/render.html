@@ -1,0 +1,36 @@
+<!doctype html><html><body style="margin:0;background:#000">
+<script type="importmap">{ "imports": { "three": "./three.module.js" } }</script>
+<script type="module">
+import * as THREE from "three";
+const parts = await (await fetch("dealer_parts.json")).json();
+const W = 1280, H = 720;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); r.shadowMap.enabled = true;
+r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(r.domElement);
+const sc = new THREE.Scene(); sc.background = new THREE.Color(0x9fc3e0);
+sc.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-150, 200, -250); sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -200, right: 200, top: 200, bottom: -200, near: 1, far: 800 });
+sun.target.position.set(-220, 0, -40); sc.add(sun); sc.add(sun.target);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x4f7a3a }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; ground.receiveShadow = true; sc.add(ground);
+for (const p of parts) {
+  let g; const [sx, sy, sz] = p.s;
+  if (p.sh === "PartType.Cylinder") { g = new THREE.CylinderGeometry(Math.min(sy, sz) / 2, Math.min(sy, sz) / 2, sx, 24); g.rotateZ(Math.PI / 2); }
+  else if (p.sh === "PartType.Ball") { const k = Math.min(sx, sy, sz); g = new THREE.SphereGeometry(k / 2, 16, 12); g.scale(sx / k, sy / k, sz / k); }
+  else g = new THREE.BoxGeometry(sx, sy, sz);
+  const col = new THREE.Color(...p.col); const neon = p.m === "Material.Neon"; const glass = p.m === "Material.Glass";
+  const mat = new THREE.MeshStandardMaterial({
+    color: col, roughness: p.m === "Material.Marble" ? 0.25 : (p.m === "Material.Metal" ? 0.4 : 0.7), metalness: p.m === "Material.Metal" ? 0.6 : 0,
+    emissive: neon ? col : 0x000000, emissiveIntensity: neon ? 1.6 : 0, transparent: p.t > 0 || glass, opacity: glass ? Math.min(1 - p.t, 0.45) : 1 - p.t });
+  const m = new THREE.Mesh(g, mat); const R = p.r;
+  m.applyMatrix4(new THREE.Matrix4().set(R[0], R[1], R[2], p.p[0], R[3], R[4], R[5], p.p[1], R[6], R[7], R[8], p.p[2], 0, 0, 0, 1));
+  m.castShadow = !glass && !neon; m.receiveShadow = true; sc.add(m);
+  if (p.L) { const l = new THREE.PointLight(0xfff2dd, p.L === "SurfaceLight" ? 60 : 25, 40, 1.5); l.position.set(p.p[0], p.p[1] - 1, p.p[2]); sc.add(l); }
+}
+const cam = new THREE.PerspectiveCamera(60, W / H, 0.5, 3000);
+window.shot = (pos, look, fov) => { cam.fov = fov || 60; cam.updateProjectionMatrix(); cam.position.set(...pos); cam.lookAt(...look); r.render(sc, cam); return true; };
+window.ready = true;
+</script></body></html>

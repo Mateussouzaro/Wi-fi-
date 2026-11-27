@@ -104,7 +104,7 @@ patch(spawner, [
 		return false, "Unknown vehicle"
 	end
 	local gate = ServerStorage:FindFirstChild("PodeSpawnar")
-	if gate and not gate:Invoke(plr, vehicleIds[carId].Name) then
+	if not gate or not gate:Invoke(plr, vehicleIds[carId].Name) then
 		return false, "Compre este carro na Solaris Motors"
 	end
 

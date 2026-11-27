@@ -1456,7 +1456,7 @@ local data = {}
 local dirty = {}
 local function saveNow(plr)
 	local d = data[plr]
-	if not d or not store then return end
+	if not d or not store or d.noSave then return end
 	dirty[plr] = nil
 	local ok, err = pcall(function() store:SetAsync("p_" .. plr.UserId, d) end)
 	if not ok then
@@ -1496,7 +1496,17 @@ local function onPlayerAdded(plr)
 	if data[plr] then return end
 	local d = { credits = 0, owned = {}, tutorial = false, found = {}, cores = {} }
 	if store then
-		local ok, s = pcall(function() return store:GetAsync("p_" .. plr.UserId) end)
+		local ok, s = false, nil
+		for attempt = 1, 3 do
+			ok, s = pcall(function() return store:GetAsync("p_" .. plr.UserId) end)
+			if ok then break end
+			task.wait(attempt)
+		end
+		if not ok then
+			-- never write defaults over a save we could not read
+			d.noSave = true
+			warn("[Porto Solaris] não foi possível carregar os dados de " .. plr.Name .. "; o progresso desta sessão não será salvo")
+		end
 		if ok and type(s) == "table" then
 			d.credits = s.credits or 0
 			d.owned = s.owned or {}
@@ -1702,13 +1712,22 @@ Dirigir.OnServerInvoke = function(plr, nome)
 	local char = plr.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not spawnFn or not char or not hum or hum.Health <= 0 then return false, "erro" end
-	if hum.SeatPart then hum.Sit = false task.wait(0.2) end
+	-- only from the dealership (the button lives in its catalogue)
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root or (root.Position - EXIT.Position).Magnitude > 220 then return false, "longe" end
+	if hum.SeatPart then
+		local weld = hum.SeatPart:FindFirstChild("SeatWeld")
+		if weld then weld:Destroy() end
+		task.wait(0.2)
+	end
+	local before = char:GetPivot()
 	char:PivotTo(EXIT)
 	task.wait(0.15)
 	sitOnSpawn[plr] = nome
 	local ok, res = spawnFn:Invoke(plr, nome)
 	if ok ~= true then
 		sitOnSpawn[plr] = nil
+		if char.Parent then char:PivotTo(before) end
 		return false, res == "Spawner on cooldown" and "espera" or "erro"
 	end
 	return true
@@ -1718,7 +1737,11 @@ end
 do
 	local prompt = map:FindFirstChild("AbrirCatalogo", true)
 	if prompt then
-		prompt.Triggered:Connect(function(plr) AbrirLoja:FireClient(plr) end)
+		prompt.Triggered:Connect(function(plr)
+			local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+			if hum and hum.SeatPart then return end -- not while driving
+			AbrirLoja:FireClient(plr)
+		end)
 	end
 end
 Players.PlayerRemoving:Connect(function(plr)

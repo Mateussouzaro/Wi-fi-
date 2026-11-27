@@ -728,18 +728,24 @@ task.spawn(function()
 		local mapa = workspace:FindFirstChild("Mapa")
 		if mapa then
 			for _, m in ipairs(mapa:GetChildren()) do
-				if m:IsA("Model") and m:GetAttribute("Giro") and not spinning[m] then spinning[m] = m:GetPivot() end
+				if m:IsA("Model") and m:GetAttribute("Giro") and not spinning[m] then
+					local centre = m:GetBoundingBox().Position
+					spinning[m] = { cf0 = m:GetPivot(), centre = CFrame.new(centre), a = 0 }
+				end
 			end
 		end
 		task.wait(3)
 	end
 end)
 RunService.RenderStepped:Connect(function(dt)
-	for m, cf in pairs(spinning) do
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	for m, s in pairs(spinning) do
 		if m.Parent then
-			cf = cf * CFrame.Angles(0, m:GetAttribute("Giro") * dt, 0)
-			spinning[m] = cf
-			m:PivotTo(cf)
+			-- turn around the car's own centre, and only when someone can see it (saves phone CPU)
+			if root and (root.Position - s.centre.Position).Magnitude < 150 then
+				s.a = s.a + (m:GetAttribute("Giro") or 0.3) * dt
+				m:PivotTo(s.centre * CFrame.Angles(0, s.a, 0) * s.centre:ToObjectSpace(s.cf0))
+			end
 		else
 			spinning[m] = nil
 		end

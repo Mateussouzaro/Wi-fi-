@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
@@ -118,9 +119,8 @@ local function catInfo(id)
 end
 
 -- 3D models: the spawner's display copies (scripts removed, centred at the origin)
-local modelsFolder = nil
 local function displayModel(nome)
-	modelsFolder = modelsFolder or ReplicatedStorage:WaitForChild("SpawnerViewportModels", 30)
+	local modelsFolder = ReplicatedStorage:FindFirstChild("SpawnerViewportModels")
 	local m = modelsFolder and modelsFolder:FindFirstChild(nome)
 	if not m then return nil end
 	local c = m:Clone()
@@ -219,8 +219,9 @@ local function makeCard(nome, order)
 		Size = UDim2.new(1, -12, 0.56, 0), Position = UDim2.new(0, 6, 0, 22), BackgroundTransparency = 1,
 		Ambient = rgb(150, 150, 160), LightColor = rgb(255, 250, 245), LightDirection = Vector3.new(-1, -1.4, -0.6),
 	}, b)
-	local m = displayModel(nome)
-	if m then
+	local function fill()
+		local m = displayModel(nome)
+		if not m then return false end
 		m:PivotTo(CFrame.new())
 		m.Parent = vp
 		local _, size = m:GetBoundingBox()
@@ -229,6 +230,14 @@ local function makeCard(nome, order)
 		local a = math.rad(215)
 		vc.CFrame = CFrame.lookAt(Vector3.new(math.sin(a) * dist, size.Y * 0.9, math.cos(a) * dist), Vector3.new(0, -size.Y * 0.1, 0))
 		vp.CurrentCamera = vc
+		return true
+	end
+	if not fill() then
+		-- the 3D models are still loading: fill the picture when they arrive
+		task.spawn(function()
+			local f = ReplicatedStorage:WaitForChild("SpawnerViewportModels", 120)
+			if f then f:WaitForChild(nome, 30) fill() end
+		end)
 	end
 	local pill = frame(b, UDim2.new(0, 0, 0, 18), UDim2.new(0, 8, 0, 6), ci.cor, 0)
 	pill.AutomaticSize = Enum.AutomaticSize.X
@@ -327,7 +336,10 @@ end)
 local insp = frame(gui, UDim2.new(1, 0, 1, 0), nil, C.bg, 1)
 insp.Visible = false
 -- top-left: back + title
-local topBar = frame(insp, UDim2.new(0, 420, 0, 64), UDim2.new(0, 14, 0, 14), C.bg, 1)
+-- (below Roblox's own menu/chat buttons, which take the taps in the top-left corner)
+local topInset = 58
+pcall(function() topInset = math.max(GuiService:GetGuiInset().Y, 36) + 10 end)
+local topBar = frame(insp, UDim2.new(0, 420, 0, 64), UDim2.new(0, 14, 0, topInset), C.bg, 1)
 scaled(topBar)
 local backBtn = button(topBar, "‹  VOLTAR", UDim2.new(0, 120, 0, 40), nil, C.card, 14)
 local tMarca = label(topBar, "", UDim2.new(0, 280, 0, 16), UDim2.new(0, 134, 0, 0), 12, C.muted, Enum.Font.GothamBlack)
@@ -340,6 +352,7 @@ panel.AnchorPoint = Vector2.new(1, 0)
 corner(panel, 16)
 stroke(panel, C.line, 1, 0.85)
 local panelScale = scaled(panel)
+panel.Active = true -- touches on the panel scroll it instead of turning the car
 local body = make("ScrollingFrame", {
 	Size = UDim2.new(1, -20, 1, -128), Position = UDim2.new(0, 10, 0, 10), BackgroundTransparency = 1, BorderSizePixel = 0,
 	ScrollBarThickness = 4, ScrollBarImageColor3 = C.muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -391,6 +404,7 @@ make("UIGridLayout", { CellSize = UDim2.new(0, 40, 0, 40), CellPadding = UDim2.n
 local swatchButtons = {}
 -- bottom of the panel: price + action buttons
 local foot = frame(panel, UDim2.new(1, -20, 0, 108), UDim2.new(0, 10, 1, -114), C.panel, 0)
+foot.Active = true
 corner(foot, 12)
 label(foot, "PREÇO", UDim2.new(0.4, 0, 0, 16), UDim2.new(0, 12, 0, 8), 11, C.muted, Enum.Font.GothamBlack)
 local priceText = label(foot, "", UDim2.new(0.65, 0, 0, 26), UDim2.new(0.35, -12, 0, 4), 22, C.green, Enum.Font.GothamBlack)
@@ -400,13 +414,16 @@ local actionB = button(foot, "", UDim2.new(0.5, -15, 0, 46), UDim2.new(0.5, 5, 1
 -- bottom-left: camera presets and zoom
 local camBar = frame(insp, UDim2.new(0, 470, 0, 76), UDim2.new(0, 14, 1, -14), C.bg, 1)
 camBar.AnchorPoint = Vector2.new(0, 1)
+
 scaled(camBar)
 local hint = label(camBar, "☝️ Arraste para girar  •  🤏 pinça ou +/− para zoom", UDim2.new(1, 0, 0, 18), nil, 12, C.text, Enum.Font.GothamBold)
 hint.TextStrokeTransparency = 0.5
 local presetRow = frame(camBar, UDim2.new(1, 0, 0, 46), UDim2.new(0, 0, 0, 26), C.bg, 1)
 make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6) }, presetRow)
+topBar.Active = true
 
--- confirmation / success dialogs
+-- confirmation / success dialogs (a full-screen blocker stops taps on the buttons behind)
+local blocker = make("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = rgb(0, 0, 0), BackgroundTransparency = 0.5, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 29, Active = true }, gui)
 local modal = frame(gui, UDim2.new(0, 380, 0, 250), UDim2.new(0.5, 0, 0.5, 0), C.bg, 0.02)
 modal.AnchorPoint = Vector2.new(0.5, 0.5)
 modal.Visible = false
@@ -429,6 +446,7 @@ local function showModal(t, b, no, yes, onNo, onYes, yesColor)
 	setButtonColor(mYes, yesColor or C.green)
 	modalNo, modalYes = onNo, onYes
 	modal.Visible = true
+	blocker.Visible = true
 	local sc = modal:FindFirstChildOfClass("UIScale")
 	local target = sc.Scale
 	sc.Scale = target * 0.85
@@ -436,10 +454,12 @@ local function showModal(t, b, no, yes, onNo, onYes, yesColor)
 end
 mNo.MouseButton1Click:Connect(function()
 	modal.Visible = false
+	blocker.Visible = false
 	if modalNo then modalNo() end
 end)
 mYes.MouseButton1Click:Connect(function()
 	modal.Visible = false
+	blocker.Visible = false
 	if modalYes then modalYes() end
 end)
 
@@ -682,6 +702,8 @@ end
 -- ---------------------------------------------------------------- open / close
 local function closeAll()
 	state.modo = nil
+	touches, dragging = {}, false
+	blocker.Visible = false
 	cat.Visible = false
 	insp.Visible = false
 	modal.Visible = false
@@ -731,6 +753,7 @@ openInspect = function(nome)
 	end
 	state.carro = nome
 	state.cor = savedColor(nome)
+	touches, dragging = {}, false
 	Catalogo.pintar(preview, state.cor)
 	cat.Visible = false
 	dim.Visible = false
@@ -752,7 +775,7 @@ local function doDrive(nome)
 	toast("🚗 Retirando seu " .. nome .. "...", C.gold)
 	local ok, why = RDirigir:InvokeServer(nome)
 	if not ok then
-		toast(why == "espera" and "⏳ Aguarde alguns segundos para tirar outro carro" or "Não foi possível retirar o carro agora", C.red)
+		toast(why == "espera" and "⏳ Aguarde alguns segundos para tirar outro carro" or (why == "longe" and "Vá até a Solaris Motors para retirar o carro" or "Não foi possível retirar o carro agora"), C.red)
 	end
 end
 
@@ -769,9 +792,10 @@ actionA.MouseButton1Click:Connect(function()
 	end
 end)
 
+local pending = false
 actionB.MouseButton1Click:Connect(function()
 	local nome = state.carro
-	if not nome then return end
+	if not nome or pending then return end
 	local info = Catalogo.info(nome)
 	if owns(nome) then
 		if state.cor ~= savedColor(nome) then RSalvarCor:InvokeServer(nome, state.cor) end
@@ -788,7 +812,15 @@ actionB.MouseButton1Click:Connect(function()
 		string.format("<b>%s %s</b>\nPintura: %s\n\nPreço: <font color=\"#34c76e\">%s</font>\nSaldo depois da compra: %s",
 			info.marca, info.modelo, cor and cor.nome or "Original", money(info.preco), money(credits() - info.preco)),
 		"CANCELAR", "CONFIRMAR", nil, function()
+			pending = true
+			actionB.Text = "..."
 			local ok, reason, extra = RComprar:InvokeServer(nome, state.cor)
+			pending = false
+			if state.modo ~= "inspecao" or state.carro ~= nome then
+				-- the player left the dealership meanwhile: just tell them
+				if ok then toast("🎉 " .. info.marca .. " " .. info.modelo .. " adicionado à sua garagem!", C.green) end
+				return
+			end
 			if ok then
 				sBuy:Play()
 				refreshBalance()
@@ -834,11 +866,13 @@ task.spawn(function()
 			local padPart = mapa:FindFirstChild("AreaCatalogo")
 			if padPart then
 				local rel = padPart.CFrame:PointToObjectSpace(root.Position)
-				local inside = math.abs(rel.X) < padPart.Size.X / 2 and math.abs(rel.Z) < padPart.Size.Z / 2 and rel.Y < 6
-				if inside and not inPad and not state.modo then openCatalogue() end
+				local hum = player.Character:FindFirstChildOfClass("Humanoid")
+				local seated = hum ~= nil and hum.SeatPart ~= nil
+				local inside = math.abs(rel.X) < padPart.Size.X / 2 and math.abs(rel.Z) < padPart.Size.Z / 2 and rel.Y < 6 and rel.Y > -1
+				if inside and not inPad and not state.modo and not seated then openCatalogue() end
 				inPad = inside
 			end
-			if not doors then
+			if not doors or #doors == 0 then
 				doors = {}
 				for _, d in ipairs(mapa:GetChildren()) do
 					if d.Name == "PortaAutomatica" and d:IsA("BasePart") then

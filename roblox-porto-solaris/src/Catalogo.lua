@@ -153,6 +153,8 @@ function M.marcarPintura(model)
 		if paint then
 			e.p:SetAttribute("Pintura", true)
 			e.p:SetAttribute("CorOriginal", e.p.Color)
+			local sa = e.p:FindFirstChildOfClass("SurfaceAppearance")
+			if sa then pcall(function() e.p:SetAttribute("CorOriginalSA", sa.Color) end) end
 			count = count + 1
 		end
 	end
@@ -168,7 +170,7 @@ function M.pintar(model, indice)
 			d.Color = c
 			local sa = d:FindFirstChildOfClass("SurfaceAppearance")
 			if sa then
-				pcall(function() sa.Color = entry and entry.cor or Color3.new(1, 1, 1) end)
+				pcall(function() sa.Color = entry and entry.cor or d:GetAttribute("CorOriginalSA") or Color3.new(1, 1, 1) end)
 			end
 		end
 	end
