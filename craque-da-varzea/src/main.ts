@@ -1,7 +1,7 @@
 import * as C from "./career";
 import { Save, club, overall, ATTRS, ATTR_LABEL, BOOTS } from "./career";
 import * as S from "./story";
-import { playMatch, MatchResult, Gesture } from "./match";
+import { playMatch, MatchResult, Gesture, Choice } from "./match";
 import { walkCity } from "./city";
 import { getStyle, setStyle, Style } from "./pixel";
 import "@fontsource/press-start-2p/latin-400.css";
@@ -33,6 +33,8 @@ addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "INPUT") return;
   keys.add(e.code);
   const map: Record<string, string> = { KeyK: "pass", KeyL: "tackle", KeyC: "call", KeyE: "ask" };
+  const n = ["Digit1", "Digit2", "Digit3", "Digit4"].indexOf(e.code);
+  if (n >= 0) document.querySelectorAll<HTMLButtonElement>("#mChoices .choice")[n]?.dispatchEvent(new PointerEvent("pointerdown"));
   if (map[e.code]) ctl.pressed.add(map[e.code]);
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
@@ -79,7 +81,7 @@ function gestureOf(pts: [number, number][], t0: number): Gesture {
   const inPlay = () => $("match").classList.contains("on") || $("city").classList.contains("on");
   zone.addEventListener("pointerdown", (e) => {
     if (!inPlay() || (e.target as HTMLElement).closest("button")) return;
-    if (e.clientX < innerWidth * 0.45 && jid === null) {
+    if (e.clientX < innerWidth * 0.45 && jid === null && !$("match").classList.contains("on")) {
       jid = e.pointerId;
       jx = e.clientX;
       jy = e.clientY;
@@ -235,8 +237,28 @@ function signaturePad(title: string, sub: string) {
 }
 
 // ---------------------------------------------------------------- matches
+let picked: string | null = null;
 function matchHud() {
   return {
+    choices: (opts: Choice[] | null, title = "") => {
+      const box = $("mChoices");
+      box.innerHTML = "";
+      $("mChoiceTitle").textContent = title;
+      $("mMoment").classList.toggle("on", !!opts || !!title);
+      $("mMoment").classList.toggle("aim", !opts && !!title);
+      (opts ?? []).forEach((o, i) => {
+        const b = document.createElement("button");
+        b.className = "choice";
+        b.innerHTML = `<b>${o.icon}</b>${o.label}<small>${i + 1}</small>`;
+        b.onpointerdown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          picked = o.id;
+        };
+        box.appendChild(b);
+      });
+    },
+    ticker: (t: string) => ($("mTicker").textContent = t),
     score: $("mScore"),
     clock: $("mClock"),
     power: $("powerFill"),
@@ -257,6 +279,11 @@ const matchControls = {
   passPressed: () => take("pass"),
   tacklePressed: () => take("tackle"),
   callPressed: () => take("call"),
+  choice: () => {
+    const c = picked;
+    picked = null;
+    return c;
+  },
   aiming: () => (gest.active && gest.pts.length ? gestureOf(gest.pts, gest.t0) : null),
   released: () => {
     const g = gest.done;
@@ -265,7 +292,71 @@ const matchControls = {
   },
 };
 
-async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number, number], realSec: number, stadium: "varzea" | "estadio", banner?: string): Promise<MatchResult> {
+// Bench: the clock runs and the play-by-play scrolls until the coach calls you on.
+function bench(opp: C.Club, mine: C.Club, upTo: number, score: [number, number], story: boolean) {
+  return new Promise<void>((resolve) => {
+    show("bench");
+    $("bScore").innerHTML = `<b>${mine.short}</b> 0 × 0 <b>${opp.short}</b>`;
+    const feed = $("bFeed");
+    feed.innerHTML = "";
+    $("bGo").style.display = "none";
+    // goal minutes that produce the score at the moment you come on
+    const goals: { m: number; mine: boolean }[] = [];
+    for (let i = 0; i < score[0]; i++) goals.push({ m: 5 + Math.random() * (upTo - 8), mine: true });
+    for (let i = 0; i < score[1]; i++) goals.push({ m: 5 + Math.random() * (upTo - 8), mine: false });
+    const filler = [
+      (t: C.Club) => `Escanteio para o ${t.name}.`,
+      (t: C.Club) => `Chute de fora da área do ${t.short}… pra fora!`,
+      (t: C.Club) => `Grande defesa do goleiro do ${t.short}!`,
+      (t: C.Club) => `Cartão amarelo para um jogador do ${t.short}.`,
+      (t: C.Club) => `Falta perigosa a favor do ${t.short}.`,
+      (t: C.Club) => `Contra-ataque do ${t.short}, mas a zaga corta.`,
+      (t: C.Club) => `Bola na trave do ${t.short}!! Uhhh!`,
+    ];
+    const events: { m: number; txt: string; goal?: boolean; mine?: boolean }[] = goals.map((g) => ({ m: g.m, txt: g.mine ? `⚽ GOL do ${mine.name}!` : `⚽ Gol do ${opp.name}.`, goal: true, mine: g.mine }));
+    for (let i = 0; i < Math.round(upTo / 9); i++) {
+      const t = Math.random() < 0.5 ? mine : opp;
+      events.push({ m: 2 + Math.random() * (upTo - 4), txt: filler[Math.floor(Math.random() * filler.length)](t) });
+    }
+    if (story) events.push({ m: upTo - 1, txt: "🚑 Tião cai no chão segurando o tornozelo… vai ter que sair!" });
+    events.push({ m: upTo, txt: story ? "📣 Seu Nonato: “Ô moleque, aquece aí!”" : `📣 O técnico te chama: “${s.name}, vai pro jogo!”` });
+    events.sort((a, b) => a.m - b.m);
+    const sc = [0, 0];
+    let minute = 0,
+      last = performance.now(),
+      k = 0,
+      raf = 0;
+    const speed = upTo / 12; // the bench lasts ~12 seconds
+    let fast = false;
+    $("bSkip").onclick = () => (fast = true);
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      minute = Math.min(upTo, minute + dt * speed * (fast ? 8 : 1));
+      $("bClock").textContent = `${Math.floor(minute)}'`;
+      while (k < events.length && events[k].m <= minute) {
+        const e = events[k++];
+        if (e.goal) sc[e.mine ? 0 : 1]++;
+        const li = document.createElement("li");
+        li.className = e.goal ? "goal" : "";
+        li.innerHTML = `<b>${Math.floor(e.m)}'</b> ${e.txt}`;
+        feed.prepend(li);
+        $("bScore").innerHTML = `<b>${mine.short}</b> ${sc[0]} × ${sc[1]} <b>${opp.short}</b>`;
+      }
+      if (minute >= upTo) {
+        $("bGo").style.display = "";
+        $("bGo").onclick = () => resolve();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    void raf;
+  });
+}
+
+async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number, number], realSec: number, stadium: "varzea" | "estadio", banner?: string, story = false): Promise<MatchResult> {
+  if (start > 0) await bench(opp, mine, start, score, story);
   show("match");
   const home = Math.random() < 0.5 || stadium === "varzea";
   const eff = C.effAttrs(s);
@@ -282,6 +373,7 @@ async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number
     quality,
     style,
     banner,
+    moments: stadium === "varzea" ? 4 : 6,
   }, matchHud(), matchControls).then((r) => {
     // normalise the score so index 0 is always "my team"
     if (!home) r.score = [r.score[1], r.score[0]];
@@ -323,7 +415,7 @@ async function prologue() {
   await dialogue(S.PROLOGUE, "varzea");
   await createPlayer();
   await dialogue(S.PRE_MATCH, "varzea");
-  const r = await runMatch(club("ferro"), club("unidos"), 60, [0, 1], 110, "varzea", "Você entra aos 60'!");
+  const r = await runMatch(club("ferro"), club("unidos"), 60, [0, 1], 110, "varzea", "Você entra aos 60'!", true);
   s.career.jogos++;
   s.career.gols += r.goals;
   s.career.assist += r.assists;
