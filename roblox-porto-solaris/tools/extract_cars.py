@@ -36,10 +36,39 @@ def nm(i):
     return v.decode("utf-8", "replace") if isinstance(v, bytes) else v
 
 
-def strip_scripts(inst):
-    inst.children = [c for c in inst.children if c.cls not in SCRIPTS]
+import re
+
+# scripts with any of these are removed: remote code (require(<asset id>), LoadAsset of
+# other people's models), environment tricks used by backdoors, obfuscated strings
+BAD = re.compile(
+    r"require\s*\(\s*\d{5,}|getfenv|setfenv|loadstring|LoadAssetVersion|GetLatestAssetVersion"
+    r"|(\\x[0-9a-fA-F]{2}){3,}|string\.char\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+",
+)
+BAD_NAMES = {"WelderPart", "Spike Strip Compatibility", "Essential Meetup Script Bundle", "Loader"}
+removed = []
+
+
+def src_of(i):
+    v = i.props.get("Source", ("", b""))[1]
+    return v.decode("utf-8", "replace") if isinstance(v, bytes) else v
+
+
+def strip_scripts(inst, keep_clean=False, where=""):
+    kept = []
     for c in inst.children:
-        strip_scripts(c)
+        if c.cls in SCRIPTS:
+            src = src_of(c)
+            if not keep_clean or BAD.search(src) or nm(c) in BAD_NAMES:
+                removed.append(f"{where}/{nm(c)}")
+                continue
+            # A-Chassis 6C update check pulls a model from outside the game: switch it off
+            if "LoadAsset(" in src:
+                src = re.sub(r'game:GetService\("InsertService"\):LoadAsset\(\d+\)', "nil", src)
+                c.props["Source"] = ("string", src)
+        kept.append(c)
+    inst.children = kept
+    for c in inst.children:
+        strip_scripts(c, keep_clean, f"{where}/{nm(c)}")
 
 
 def anchor(inst):
@@ -101,16 +130,21 @@ def main(pack):
             continue
         seen.add(key)
         new_name, cat = CHOSEN[key]
-        car.children = [c for c in car.children if nm(c) != "A-Chassis Tune"]
-        strip_scripts(car)
+        own_tune = any(nm(c) == "A-Chassis Tune" for c in car.children)
+        before = len(removed)
+        strip_scripts(car, keep_clean=True, where=key)
+        has_tune = any(nm(c) == "A-Chassis Tune" and c.cls == "ModuleScript" for c in car.children)
         anchor(car)
         car.props["Name"] = ("string", new_name)
-        # category goes in an attribute the server sets at start (see Server.lua)
-        out.append(copy_xml(car, tune, prefix=f"RBXV{len(out):02d}"))
-        print("ok", key, "->", new_name, cat)
+        # keep the car's own (cleaned) A-Chassis; use the clean FORTUNE one only if it had none
+        out.append(copy_xml(car, None if has_tune else tune, prefix=f"RBXV{len(out):02d}"))
+        left = sum(1 for i in walk(car) if i.cls in SCRIPTS)
+        print("ok", key, "->", new_name, cat, "| removed", len(removed) - before, "| kept", left, "| own tune", own_tune and has_tune)
     missing = set(CHOSEN) - seen
     if missing:
         print("missing:", missing)
+    for r in removed:
+        print("  removed:", r)
     (ROOT / "assets/cars.xml").write_text("".join(out), encoding="utf-8")
     print("cars.xml", sum(len(x) for x in out), "bytes")
 
