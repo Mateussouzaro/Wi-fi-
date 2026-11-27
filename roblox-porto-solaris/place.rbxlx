@@ -573,13 +573,160 @@ do
 	end
 	-- houses south-west and south-east
 	for i = 0, 9 do
-		for _, x0 in ipairs({ -330, 230 }) do
+		for _, x0 in ipairs({ 230 }) do
 			local x = x0 + (i % 5) * 26
 			local z = 150 + math.floor(i / 5) * 40
 			part({ Size = V(16, 8, 14), Position = V(x, 4, z), Color = Color3.fromHSV(math.random(), 0.25, 0.92), Material = Enum.Material.Concrete })
 			part({ Size = V(17, 1, 15), Position = V(x, 8.5, z), Color = rgb(160, 80, 50), Material = Enum.Material.Slate })
 			if i % 2 == 0 then palm(x + 9, z - 9) end
 		end
+	end
+end
+
+-- ------------------------------------------------------------------ DISTRITO SAKURA (Japanese-style district, west)
+local TweenService = game:GetService("TweenService")
+do
+	local cx, cz = -300, 180
+	-- stone paving
+	part({ Size = V(220, 0.3, 140), Position = V(cx, 0.12, cz), Color = rgb(150, 146, 140), Material = Enum.Material.Slate })
+	-- main street through the district (from the ring road)
+	part({ Size = V(220, 0.32, 16), Position = V(cx, 0.14, cz), Color = rgb(70, 70, 74), Material = Enum.Material.Asphalt })
+	-- torii gate at the east entrance
+	local function torii(x, z, s)
+		local red = rgb(200, 40, 35)
+		for _, dz in ipairs({ -7 * s, 7 * s }) do
+			part({ Shape = Enum.PartType.Cylinder, Size = V(18 * s, 1.6 * s, 1.6 * s), CFrame = CFrame.new(x, 9 * s, z + dz) * CFrame.Angles(0, 0, math.rad(90)), Color = red, Material = Enum.Material.SmoothPlastic })
+			part({ Size = V(2.4 * s, 1.2 * s, 2.4 * s), Position = V(x, 0.6 * s, z + dz), Color = rgb(30, 30, 30), Material = Enum.Material.SmoothPlastic })
+		end
+		part({ Size = V(1.4 * s, 1.2 * s, 19 * s), Position = V(x, 14 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
+		part({ Size = V(2 * s, 1.4 * s, 22 * s), Position = V(x, 17.4 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
+		part({ Size = V(2.2 * s, 0.7 * s, 23 * s), Position = V(x, 18.4 * s, z), Color = rgb(25, 25, 28), Material = Enum.Material.SmoothPlastic })
+		part({ Size = V(1.2 * s, 3 * s, 1.2 * s), Position = V(x, 15.7 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
+	end
+	torii(cx + 104, cz, 1.2)
+	-- five-storey pagoda
+	local px, pz = cx - 50, cz + 62
+	part({ Size = V(30, 2, 30), Position = V(px, 1, pz), Color = rgb(120, 116, 110), Material = Enum.Material.Cobblestone })
+	local y = 2
+	for i = 0, 4 do
+		local w = 18 - i * 2.6
+		local h = 6 - i * 0.4
+		part({ Size = V(w, h, w), Position = V(px, y + h / 2, pz), Color = rgb(190, 60, 45), Material = Enum.Material.Wood })
+		local roof = part({ Size = V(w + 7, 0.8, w + 7), Position = V(px, y + h + 0.4, pz), Color = rgb(40, 44, 50), Material = Enum.Material.Slate })
+		-- curved eaves: small tilted slabs on each side
+		for k = 0, 3 do
+			local a = k * math.pi / 2
+			part({ Size = V(w + 7, 0.5, 2.5), CFrame = CFrame.new(px, y + h + 0.2, pz) * CFrame.Angles(0, a, 0) * CFrame.new(0, 0.3, (w + 7) / 2) * CFrame.Angles(math.rad(-14), 0, 0), Color = rgb(40, 44, 50), Material = Enum.Material.Slate })
+		end
+		local lan = part({ Shape = Enum.PartType.Ball, Size = V(1.4, 1.4, 1.4), Position = V(px, y + h - 0.8, pz - w / 2 - 1.2), Color = rgb(255, 180, 90), Material = Enum.Material.Neon })
+		local l = light(lan, rgb(255, 170, 90), 18, 1.5)
+		table.insert(nightLights, { l = l })
+		y = y + h + 0.8
+		local _ = roof
+	end
+	part({ Shape = Enum.PartType.Cylinder, Size = V(8, 0.6, 0.6), CFrame = CFrame.new(px, y + 4, pz) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(201, 162, 39), Material = Enum.Material.Metal })
+	-- cherry trees with falling petals
+	local function sakura(x, z)
+		local h = 7 + math.random() * 3
+		part({ Size = V(1.4, h, 1.4), CFrame = CFrame.new(x, h / 2, z) * CFrame.Angles(0, 0, math.rad(math.random(-8, 8))), Color = rgb(70, 45, 35), Material = Enum.Material.Wood })
+		local top
+		for i = 1, 5 do
+			local s = 6 + math.random() * 4
+			top = part({ Shape = Enum.PartType.Ball, Size = V(s, s, s), Position = V(x + math.random(-3, 3), h + math.random(-1, 3), z + math.random(-3, 3)), Color = Color3.fromHSV(0.93 + math.random() * 0.04, 0.25 + math.random() * 0.15, 1), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		end
+		local pe = Instance.new("ParticleEmitter")
+		pe.Color = ColorSequence.new(rgb(255, 190, 210))
+		pe.Size = NumberSequence.new(0.25)
+		pe.Rate = 4
+		pe.Lifetime = NumberRange.new(5, 8)
+		pe.Speed = NumberRange.new(0.5, 1.5)
+		pe.Acceleration = V(0.6, -1.2, 0.3)
+		pe.SpreadAngle = Vector2.new(180, 180)
+		pe.Rotation = NumberRange.new(0, 360)
+		pe.RotSpeed = NumberRange.new(-90, 90)
+		pe.LightEmission = 0.2
+		pe.Parent = top
+	end
+	for i = 0, 9 do
+		sakura(cx - 100 + i * 21, cz - 22)
+		sakura(cx - 100 + i * 21, cz + 22)
+	end
+	for i = 1, 6 do sakura(px - 22 - math.random(0, 8), pz - 14 + i * 4) end
+	-- stone lanterns (toro) along the street
+	local function toro(x, z)
+		local g = rgb(150, 148, 140)
+		part({ Size = V(2.4, 0.6, 2.4), Position = V(x, 0.4, z), Color = g, Material = Enum.Material.Slate })
+		part({ Shape = Enum.PartType.Cylinder, Size = V(3, 0.9, 0.9), CFrame = CFrame.new(x, 2.1, z) * CFrame.Angles(0, 0, math.rad(90)), Color = g, Material = Enum.Material.Slate })
+		local box = part({ Size = V(1.8, 1.6, 1.8), Position = V(x, 4.4, z), Color = rgb(255, 210, 140), Material = Enum.Material.Neon, Transparency = 0.15 })
+		part({ Size = V(3.2, 0.5, 3.2), Position = V(x, 5.4, z), Color = g, Material = Enum.Material.Slate })
+		part({ Size = V(1, 0.8, 1), Position = V(x, 6, z), Color = g, Material = Enum.Material.Slate })
+		local l = light(box, rgb(255, 190, 120), 16, 1.6)
+		table.insert(nightLights, { l = l })
+	end
+	for i = 0, 8 do
+		toro(cx - 96 + i * 24, cz - 10)
+		toro(cx - 96 + i * 24, cz + 10)
+	end
+	-- red paper lanterns strung across the street
+	for i = 0, 6 do
+		local x = cx - 80 + i * 26
+		for _, dz in ipairs({ -12, 12 }) do part({ Size = V(0.5, 12, 0.5), Position = V(x, 6, cz + dz), Color = rgb(40, 30, 25), Material = Enum.Material.Wood }) end
+		part({ Size = V(0.15, 0.15, 24), Position = V(x, 11.5, cz), Color = rgb(30, 30, 30), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		for k = -2, 2 do
+			local ln = part({ Shape = Enum.PartType.Cylinder, Size = V(1.6, 1.4, 1.4), CFrame = CFrame.new(x, 10.4, cz + k * 4.5) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(220, 40, 40), Material = Enum.Material.Neon, CanCollide = false })
+			table.insert(nightLights, { band = ln })
+		end
+	end
+	-- little shops with curtains (noren) and glowing signs
+	local SHOPS = { { "RAMEN", rgb(230, 60, 50) }, { "SUSHI", rgb(40, 120, 200) }, { "MANGÁ", rgb(250, 160, 30) }, { "CHÁ", rgb(60, 160, 90) }, { "LAMEN", rgb(180, 60, 160) }, { "DOCES", rgb(240, 110, 150) } }
+	for i, sh in ipairs(SHOPS) do
+		for _, side in ipairs({ -1, 1 }) do
+			local x = cx - 90 + (i - 1) * 32 + (side > 0 and 14 or 0)
+			local z = cz + side * 40
+			local wall = part({ Size = V(14, 9, 12), Position = V(x, 4.5, z), Color = rgb(230, 220, 200), Material = Enum.Material.Plaster })
+			part({ Size = V(16, 1, 14), Position = V(x, 9.4, z), Color = rgb(45, 48, 55), Material = Enum.Material.Slate })
+			part({ Size = V(15, 0.5, 3), CFrame = CFrame.new(x, 7.6, z - side * 7) * CFrame.Angles(math.rad(side * 18), 0, 0), Color = rgb(45, 48, 55), Material = Enum.Material.Slate })
+			for k = -2, 2 do
+				part({ Size = V(1.6, 2.6, 0.1), Position = V(x + k * 1.7, 5.6, z - side * 6.05), Color = sh[2], Material = Enum.Material.Fabric, CanCollide = false })
+			end
+			local board = part({ Size = V(10, 2, 0.4), CFrame = CFrame.new(x, 8.2, z - side * 6.3) * CFrame.Angles(0, side > 0 and 0 or math.rad(180), 0), Color = rgb(20, 20, 22), Material = Enum.Material.SmoothPlastic })
+			sign(board, sh[1], sh[2])
+			local glow = part({ Size = V(10, 3, 0.2), Position = V(x, 3.6, z - side * 6.1), Color = rgb(255, 220, 160), Material = Enum.Material.Neon, Transparency = 0.35 })
+			table.insert(nightLights, { band = glow })
+			local _ = wall
+		end
+	end
+	-- glowing vending machines
+	for i = 0, 3 do
+		local vm = part({ Size = V(3, 6.5, 2.4), Position = V(cx - 70 + i * 40, 3.25, cz - 14.5), Color = Color3.fromHSV(i * 0.22, 0.6, 0.9), Material = Enum.Material.SmoothPlastic })
+		local front = part({ Size = V(2.6, 4, 0.2), Position = vm.Position + V(0, 0.6, 1.25), Color = rgb(230, 240, 255), Material = Enum.Material.Neon, Transparency = 0.2 })
+		light(front, rgb(220, 235, 255), 10, 1)
+	end
+	-- koi pond beside the pagoda (real water)
+	local kx, kz = px + 44, pz - 2
+	T:FillBlock(CFrame.new(kx, -1.5, kz), V(36, 3, 22), Enum.Material.Air)
+	T:FillBlock(CFrame.new(kx, -3.5, kz), V(36, 1, 22), Enum.Material.Mud)
+	T:FillBlock(CFrame.new(kx, -1.6, kz), V(34, 2.4, 20), Enum.Material.Water)
+	part({ Size = V(38, 0.4, 24), Position = V(kx, 0.25, kz), Color = rgb(150, 146, 140), Material = Enum.Material.Slate, Transparency = 1, CanCollide = false })
+	for i = 1, 14 do
+		local a = i / 14 * math.pi * 2
+		part({ Size = V(3 + math.random() * 2, 1.4, 2.6), CFrame = CFrame.new(kx + math.cos(a) * 18, 0.4, kz + math.sin(a) * 11) * CFrame.Angles(0, a, 0), Color = rgb(110, 108, 102), Material = Enum.Material.Rock })
+	end
+	for i = 1, 7 do
+		local fish = part({ Size = V(1.6, 0.5, 0.6), Position = V(kx - 10 + i * 3, -0.9, kz + math.random(-5, 5)), Color = (i % 2 == 0) and rgb(255, 120, 30) or rgb(250, 250, 250), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		TweenService:Create(fish, TweenInfo.new(3 + math.random() * 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = fish.CFrame * CFrame.new(math.random(-6, 6), 0, math.random(-4, 4)) * CFrame.Angles(0, math.rad(math.random(90, 270)), 0) }):Play()
+	end
+	-- red arched bridge over the pond
+	for k = -4, 4 do
+		local yy = 1.6 - (k * k) * 0.08
+		part({ Size = V(2.2, 0.5, 5), Position = V(kx + k * 2.1, yy + 0.6, kz), Color = rgb(200, 40, 35), Material = Enum.Material.Wood })
+	end
+	-- bamboo clusters
+	for i = 1, 24 do
+		local x = cx - 105 + math.random() * 8
+		local z = cz - 60 + i * 5
+		local h = 10 + math.random() * 8
+		part({ Shape = Enum.PartType.Cylinder, Size = V(h, 0.5, 0.5), CFrame = CFrame.new(x, h / 2, z) * CFrame.Angles(0, 0, math.rad(90 + math.random(-4, 4))), Color = rgb(110, 160, 60), Material = Enum.Material.SmoothPlastic })
 	end
 end
 
@@ -611,6 +758,7 @@ local PLACES = {
 	{ id = "loja", name = "Solaris Motors", pos = V(-180, 0, -60), r = 35 },
 	{ id = "centro", name = "Centro", pos = V(0, 0, -390), r = 90 },
 	{ id = "praia", name = "Mirante do Píer", pos = V(0, 0, 500), r = 25 },
+	{ id = "sakura", name = "Distrito Sakura", pos = V(-300, 0, 180), r = 90 },
 }
 local placesValue = Instance.new("StringValue")
 placesValue.Name = "Lugares"
