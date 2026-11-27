@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Porto Solaris — renders</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif; }
+  #ov { position: fixed; inset: 0; pointer-events: none; }
+  .title { position: absolute; left: 0; right: 0; text-align: center; color: #fff; font-weight: 900; letter-spacing: 0.04em; text-shadow: 0 6px 0 rgba(0,0,0,.35), 0 0 40px rgba(255,170,60,.55); font-style: italic; }
+  .title b { color: #ffc83c; }
+  .sub { position: absolute; left: 0; right: 0; text-align: center; color: #ffc83c; font-weight: 800; letter-spacing: 0.18em; text-shadow: 0 3px 0 rgba(0,0,0,.5); }
+  .cap { position: absolute; left: 50%; transform: translateX(-50%); bottom: 9%; padding: 14px 28px; border-radius: 40px; background: rgba(12,13,16,.72); border: 3px solid #ffc83c; color: #fff; font-weight: 800; white-space: nowrap; }
+  .tag { position: absolute; padding: 8px 18px; border-radius: 30px; background: #ffc83c; color: #111; font-weight: 900; }
+  .bars::before, .bars::after { content: ""; position: absolute; left: 0; right: 0; height: 9%; background: #000; }
+  .bars::before { top: 0; } .bars::after { bottom: 0; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/ultima-luz/node_modules/three/build/three.module.js", "three/addons/": "/ultima-luz/node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="ov"></div>
+<script type="module">
+import * as THREE from "three";
+import { Sky } from "three/addons/objects/Sky.js";
+import { Water } from "three/addons/objects/Water.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const Q = new URLSearchParams(location.search);
+const W = +(Q.get("w") || 1280), H = +(Q.get("h") || 720);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.6;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xe0b48c, 0.0009);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.35;
+const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 3000);
+
+// sunset sky + sun
+const sky = new Sky();
+sky.scale.setScalar(3000);
+scene.add(sky);
+const su = sky.material.uniforms;
+su.turbidity.value = 9; su.rayleigh.value = 2.6; su.mieCoefficient.value = 0.008; su.mieDirectionalG.value = 0.86;
+const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(76), THREE.MathUtils.degToRad(-40));
+su.sunPosition.value.copy(sunDir);
+const sun = new THREE.DirectionalLight(0xffb070, 3.2);
+sun.position.copy(sunDir).multiplyScalar(200);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+const sc = sun.shadow.camera; sc.left = -140; sc.right = 140; sc.top = 140; sc.bottom = -140; sc.far = 600;
+sun.shadow.bias = -0.0003;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xffe2c0, 0x4a4450, 1.1));
+
+const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, ...o });
+const add = (geo, mat, x, y, z, parent = scene) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; parent.add(m); return m; };
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+// ground, lot, lines
+add(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), M(0x5d7a3a, { roughness: 1 }), 0, -0.05, 0);
+add(box(150, 0.3, 100), M(0x2e3034, { roughness: 0.85, metalness: 0.05 }), 0, 0, 0);
+add(box(24, 0.25, 600), M(0x34363a, { roughness: 0.9 }), -90, 0.02, 0);
+for (let row = -1; row <= 1; row++) for (let i = 0; i <= 12; i++) add(box(0.4, 0.05, 16), M(0xf2f2f2, { roughness: 0.5 }), -60 + i * 10, 0.18, row * 30);
+for (const z of [-50, 50]) add(box(150, 0.6, 3), M(0xc8bca2), 0, 0.3, z);
+
+// sea + beach behind the lot
+const water = new Water(new THREE.PlaneGeometry(3000, 3000), { textureWidth: 512, textureHeight: 512, waterNormals: (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d"); const img = g.createImageData(256, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) { const a = Math.sin(x / 256 * 6.283 * 3) * 0.5 + Math.sin((x + y) / 256 * 6.283 * 5) * 0.3 + Math.sin(y / 256 * 6.283 * 7) * 0.2; const i = (y * 256 + x) * 4; img.data[i] = 128 + a * 50; img.data[i + 1] = 128 + Math.cos(a * 3) * 50; img.data[i + 2] = 255; img.data[i + 3] = 255; }
+  g.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })(), sunDirection: sunDir.clone(), sunColor: 0xffc890, waterColor: 0x10506a, distortionScale: 2.5, fog: true });
+water.rotation.x = -Math.PI / 2; water.position.set(0, -0.8, -1700);
+scene.add(water);
+add(box(2000, 0.6, 60), M(0xd9c39a, { roughness: 1 }), 0, -0.5, -230);
+
+// palms
+function palm(x, z, h = 15) {
+  const g = new THREE.Group(); scene.add(g); g.position.set(x, 0, z);
+  const lean = (Math.random() - 0.5) * 0.2;
+  const tr = add(new THREE.CylinderGeometry(0.45, 0.7, h, 8), M(0x8a6a48, { roughness: 1 }), 0, h / 2, 0, g); tr.rotation.z = lean;
+  const top = new THREE.Vector3(-Math.sin(lean) * h, h, 0);
+  const leaf = new THREE.PlaneGeometry(1.6, 9, 1, 5); leaf.translate(0, 4.5, 0);
+  const p = leaf.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, -Math.pow(p.getY(i) / 9, 2) * 3.5); leaf.computeVertexNormals();
+  for (let i = 0; i < 9; i++) { const l = add(leaf, M(0x3f7a32, { side: THREE.DoubleSide, roughness: 0.8 }), top.x, top.y, top.z, g); l.rotation.set(-1.1 - Math.random() * 0.3, (i / 9) * Math.PI * 2, 0, "YXZ"); }
+}
+for (let i = 0; i < 8; i++) { palm(-70 + i * 20, -54); palm(-70 + i * 20, 54); }
+for (let i = 0; i < 16; i++) palm(-150 + i * 22, -225 + Math.random() * 6, 13 + Math.random() * 6);
+
+// lamp posts with glowing heads
+const lampHeads = [];
+for (let i = 0; i < 4; i++) for (const z of [-15, 15]) {
+  const x = -45 + i * 32;
+  add(box(0.5, 16, 0.5), M(0x24262a, { metalness: 0.6 }), x, 8, z);
+  add(box(5, 0.4, 0.4), M(0x24262a, { metalness: 0.6 }), x + 2.2, 15.8, z);
+  const head = add(box(1.6, 0.5, 2.2), new THREE.MeshStandardMaterial({ color: 0xffe2b0, emissive: 0xffc070, emissiveIntensity: 2.5 }), x + 4.4, 15.5, z);
+  lampHeads.push(head);
+}
+
+// background: gas station canopy and city towers
+const gas = new THREE.Group(); scene.add(gas); gas.position.set(110, 0, 10);
+add(box(40, 2, 24), M(0xf4f4f4), 0, 13, 0, gas); add(box(40.2, 0.8, 24.2), M(0xd21e28), 0, 12.2, 0, gas);
+add(box(36, 0.15, 20), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5 }), 0, 11.7, 0, gas);
+for (const x of [-16, 16]) for (const z of [-9, 9]) add(box(1.4, 12, 1.4), M(0xe8e8e8), x, 6, z, gas);
+for (let i = 0; i < 26; i++) {
+  const h = 30 + Math.random() * 90, w = 18 + Math.random() * 14;
+  const t = add(box(w, h, w), M(new THREE.Color().setHSL(0.6, 0.12, 0.45 + Math.random() * 0.2), { metalness: 0.2, roughness: 0.5 }), -260 + i * 22 + Math.random() * 6, h / 2, 170 + Math.random() * 60);
+  for (let k = 1; k < h / 9; k++) add(box(w + 0.2, 0.5, w + 0.2), new THREE.MeshStandardMaterial({ color: 0x332211, emissive: 0xffc070, emissiveIntensity: Math.random() < 0.6 ? 1.2 : 0.1 }), t.position.x, k * 9, t.position.z);
+}
+
+// cars (same construction as the Roblox catalogue)
+const SPECS = {
+  solaris: { len: 15, w: 6.6, h: 2.2, cab: [6, 1.6, 0.6] },
+  klassik: { len: 13.5, w: 6.2, h: 2.4, cab: [5.6, 1.9, 1.2], round: true },
+  bravo: { len: 16, w: 6.8, h: 2.4, cab: [5.5, 1.7, 1.6], wing: true },
+  titan: { len: 16, w: 7, h: 3.4, cab: [9, 2.4, 0.8], tall: true },
+  luxo: { len: 17, w: 6.8, h: 2.4, cab: [8, 2.0, 0.4] },
+  nova: { len: 15, w: 6.6, h: 2.3, cab: [8.5, 1.8, 0] },
+  vortex: { len: 16, w: 7.2, h: 1.8, cab: [5, 1.4, -0.4], wing: true, wedge: true },
+  aero: { len: 17, w: 7.2, h: 1.9, cab: [4.5, 1.5, -0.8], wing: true, wedge: true, stripe: 0xff8c00 },
+};
+function car(id, color, x, z, ry, stripe) {
+  const s = SPECS[id]; const g = new THREE.Group(); scene.add(g); g.position.set(x, 0.15, z); g.rotation.y = ry;
+  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: 0.55, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const dark = M(0x141418, { roughness: 0.5 }); const glass = new THREE.MeshPhysicalMaterial({ color: 0x111820, metalness: 0.3, roughness: 0.05, transparent: true, opacity: 0.75 });
+  const wr = s.tall ? 1.7 : 1.35; const bodyBottom = wr * 0.9 + (s.tall ? 0.5 : 0); const bh = s.h * 0.62 + 0.5; const bodyY = bodyBottom + bh / 2;
+  add(new RoundedBoxGeometry(s.w, bh, s.len, 3, 0.45), paint, 0, bodyY, 0, g);
+  const nl = s.wedge ? 5 : 3.6, nh = 0.7;
+  const tri = new THREE.Shape(); tri.moveTo(0, 0); tri.lineTo(nl, 0); tri.lineTo(nl, nh); tri.lineTo(0, 0);
+  const prism = new THREE.ExtrudeGeometry(tri, { depth: s.w - 0.3, bevelEnabled: false }); prism.rotateY(Math.PI / 2); prism.translate(-(s.w - 0.3) / 2, 0, 0);
+  add(prism, paint, 0, bodyY + bh / 2 - 0.02, -s.len / 2 + 0.2 + nl, g).rotation.y = Math.PI;
+  add(box(s.w + 0.1, 0.45, s.len - 4), dark, 0, bodyBottom + 0.1, 0, g);
+  const [cl, ch, cz] = s.cab; const cabY = bodyY + bh / 2 + ch / 2;
+  add(new RoundedBoxGeometry(s.w - 1, ch, cl, 2, 0.3), glass, 0, cabY, cz, g);
+  add(new RoundedBoxGeometry(s.w - 1.2, 0.3, cl - 1.2, 2, 0.12), paint, 0, cabY + ch / 2 + 0.02, cz + 0.3, g);
+  const ws = add(box(s.w - 1, 0.15, 2.2), glass, 0, cabY - 0.1, cz - cl / 2 - 0.7, g); ws.rotation.x = -0.6;
+  if (s.round) { const r = add(new THREE.SphereGeometry(s.w / 2, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), paint, 0, bodyY + bh / 2 - 0.1, s.len / 2 - 3, g); r.scale.set(1, 0.35, 1.1); }
+  if (s.wing) { add(box(s.w - 0.4, 0.2, 1.4), dark, 0, bodyY + bh / 2 + 1.6, s.len / 2 - 1, g); for (const sx of [-1, 1]) add(box(0.2, 1.4, 0.5), dark, sx * (s.w / 2 - 1), bodyY + bh / 2 + 0.8, s.len / 2 - 1, g); }
+  const st = stripe ?? s.stripe; if (st) { const sm = new THREE.MeshPhysicalMaterial({ color: st, clearcoat: 1, roughness: 0.3 }); add(box(1.4, bh + 0.04, s.len + 0.02), sm, 0, bodyY + 0.01, 0, g); add(box(1.4, 0.3, cl - 1.4), sm, 0, cabY + ch / 2 + 0.12, cz + 0.3, g); }
+  for (const sx of [-1, 1]) {
+    add(box(1.5, 0.45, 0.2), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4dd, emissiveIntensity: 3 }), sx * (s.w / 2 - 1.1), bodyY + 0.25, -s.len / 2 - 0.02, g);
+    add(box(1.6, 0.4, 0.2), new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff1010, emissiveIntensity: 3 }), sx * (s.w / 2 - 1.1), bodyY + 0.3, s.len / 2 + 0.02, g);
+    for (const wz of [-1, 1]) {
+      const t = add(new THREE.CylinderGeometry(wr, wr, 1.1, 28).rotateZ(Math.PI / 2), M(0x111111, { roughness: 0.9 }), sx * (s.w / 2 - 0.45), wr, wz * (s.len / 2 - 2.8), g);
+      const rim = add(new THREE.CylinderGeometry(wr * 0.65, wr * 0.65, 1.16, 24).rotateZ(Math.PI / 2), M(0xd8d8de, { metalness: 1, roughness: 0.2 }), t.position.x, wr, t.position.z, g);
+      rim.userData.spin = true;
+    }
+  }
+  return g;
+}
+const COLORS = [0xeeeef2, 0x141418, 0xc81e28, 0x1e5ac8, 0x78c8e6, 0xfaa01e, 0x28a05a, 0x783cb4, 0xd2be96, 0xa0a5ac];
+const IDS = Object.keys(SPECS);
+let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+for (let row = -1; row <= 1; row++) for (let i = 0; i < 12; i++) {
+  if (rnd() < 0.25) continue;
+  const id = IDS[Math.floor(rnd() * IDS.length)];
+  car(id, COLORS[Math.floor(rnd() * COLORS.length)], -55 + i * 10, row * 30, row === 1 ? Math.PI : 0, id === "aero" ? 0xff8c00 : null);
+}
+// hero cars for the shots
+const hero = car("aero", 0x78c8e6, -81, -4, 2.07, 0xff8c00);
+const hero2 = car("vortex", 0xc81e28, -92, 5, 2.07);
+
+// post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.4, 0.5, 0.92));
+composer.addPass(new OutputPass());
+
+// ------------------------------------------------------------- shots
+const ov = document.getElementById("ov");
+const lerp = (a, b, k) => a + (b - a) * k;
+const ease = (k) => k * k * (3 - 2 * k);
+function cam(from, to, look1, look2, k) {
+  const e = ease(Math.min(1, Math.max(0, k)));
+  camera.position.set(lerp(from[0], to[0], e), lerp(from[1], to[1], e), lerp(from[2], to[2], e));
+  camera.lookAt(lerp(look1[0], look2[0], e), lerp(look1[1], look2[1], e), lerp(look1[2], look2[2], e));
+}
+// the trailer timeline: [start, end, shot]
+const SHOTS = [
+  [0, 3.5, (k) => { cam([-140, 70, 140], [-60, 40, 110], [0, 0, 0], [10, 0, 0], k); return `<div class="bars"></div><div class="title" style="top:30%;font-size:${H * 0.12}px">PORTO <b>SOLARIS</b></div><div class="sub" style="top:${30 + 15}%;font-size:${H * 0.04}px">CAR MEET • MUNDO ABERTO</div>`; }],
+  [3.5, 7, (k) => { cam([-40, 4, 52], [10, 4, 52], [-30, 1.5, 30], [20, 1.5, 30], k); return `<div class="bars"></div><div class="cap" style="font-size:${H * 0.038}px">🅿️ Mostre seu carro no Encontro Solaris</div>`; }],
+  [7, 10.5, (k) => { hero.position.set(lerp(-95, -95, k), 0.15, lerp(160, -60, k)); hero.rotation.y = 0; cam([-80, 3.5, lerp(150, -40, k) + 22], [-80, 3.5, lerp(150, -40, k) + 22], [-95, 1.5, lerp(150, -40, k)], [-95, 1.5, lerp(150, -40, k)], k); return `<div class="bars"></div><div class="cap" style="font-size:${H * 0.038}px">🕹️ Dirija livre pela cidade</div>`; }],
+  [10.5, 14, (k) => { cam([80, 12, 60], [130, 9, 40], [110, 6, 10], [110, 6, 10], k); return `<div class="bars"></div><div class="cap" style="font-size:${H * 0.038}px">⛽ Posto Aurora, praia, centro e muito mais</div>`; }],
+  [14, 17.5, (k) => { const a = k * 1.6; cam([-92 - Math.cos(a) * 14, 3, 5 + Math.sin(a) * 14], [-92 - Math.cos(a) * 14, 3, 5 + Math.sin(a) * 14], [-92, 1.2, 5], [-92, 1.2, 5], 0); return `<div class="bars"></div><div class="cap" style="font-size:${H * 0.038}px">🎨 8 carros • cores e faixas • 😎 poses • 📷 modo foto</div>`; }],
+  [17.5, 21, (k) => { cam([-200, 25, 80], [-150, 50, 160], [0, 0, -100], [0, 0, -150], k); return `<div class="bars"></div><div class="title" style="top:32%;font-size:${H * 0.12}px">PORTO <b>SOLARIS</b></div><div class="sub" style="top:${32 + 15}%;font-size:${H * 0.045}px">JOGUE AGORA NO ROBLOX</div>`; }],
+];
+window.renderAt = (t) => {
+  hero.position.set(-81, 0.15, -4); hero.rotation.y = 2.07;
+  let html = "";
+  for (const [a, b, f] of SHOTS) if (t >= a && t < b) html = f((t - a) / (b - a));
+  if (t >= 21) html = SHOTS[5][2](1);
+  water.material.uniforms.time.value = t * 0.6;
+  ov.innerHTML = html;
+  composer.render();
+};
+window.still = (kind) => {
+  if (kind === "icon") {
+    cam([-107, 3.4, 18], [-107, 3.4, 18], [-90, 1.2, 3], [-90, 1.2, 3], 0);
+    ov.innerHTML = `<div class="title" style="top:6%;font-size:${H * 0.15}px;line-height:1">PORTO<br><b>SOLARIS</b></div><div class="tag" style="left:50%;transform:translateX(-50%);bottom:7%;font-size:${H * 0.06}px">CAR MEET</div>`;
+  } else {
+    cam([-110, 4, 22], [-110, 4, 22], [-84, 1.4, -2], [-84, 1.4, -2], 0);
+    ov.innerHTML = `<div class="title" style="top:8%;font-size:${H * 0.13}px">PORTO <b>SOLARIS</b></div><div class="sub" style="top:24%;font-size:${H * 0.045}px">CAR MEET • MUNDO ABERTO</div><div class="tag" style="right:4%;bottom:8%;font-size:${H * 0.045}px">🚗 8 CARROS</div><div class="tag" style="left:4%;bottom:8%;font-size:${H * 0.045}px">🌅 DIA E NOITE</div>`;
+  }
+  water.material.uniforms.time.value = 3;
+  composer.render();
+};
+window.ready = true;
+</script>
+</body>
+</html>

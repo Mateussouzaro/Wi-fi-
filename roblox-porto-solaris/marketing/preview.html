@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Car preview</title>
+<style>body{margin:0;background:#111;font-family:"DejaVu Sans",sans-serif}.l{position:fixed;color:#fff;font-weight:800;font-size:22px;text-shadow:0 2px 4px #000}</style>
+<script type="importmap">{ "imports": { "three": "/ultima-luz/node_modules/three/build/three.module.js", "three/addons/": "/ultima-luz/node_modules/three/examples/jsm/" } }</script>
+</head><body>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+const W = 1500, H = 1000;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9; r.shadowMap.enabled = true;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1b2430);
+scene.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffe6c8, 2.5); sun.position.set(5, 10, 6); sun.castShadow = true; scene.add(sun);
+const g = new THREE.Mesh(new THREE.PlaneGeometry(100, 100).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x30343a })); g.receiveShadow = true; scene.add(g);
+const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 100); cam.position.set(9, 6.5, 12); cam.lookAt(0, 0, 0.4);
+const names = ["race-future", "race", "sedan-sports", "suv-luxury", "hatchback-sports", "police"];
+const loader = new GLTFLoader(); let n = 0;
+names.forEach((nm, i) => loader.load(`kenney/${nm}.glb`, (gl) => {
+  const o = gl.scene; o.traverse((m) => { if (m.isMesh) { m.castShadow = true; } });
+  const x = (i % 3 - 1) * 3.2, z = Math.floor(i / 3) * 3.6 - 1.8; o.position.set(x, 0, z); o.rotation.y = -0.6; scene.add(o);
+  const l = document.createElement("div"); l.className = "l"; l.textContent = nm; document.body.appendChild(l);
+  const p = new THREE.Vector3(x, -0.4, z + 1.2).project(cam); l.style.left = ((p.x + 1) / 2 * W - 60) + "px"; l.style.top = ((1 - p.y) / 2 * H) + "px";
+  if (++n === names.length) { r.render(scene, cam); window.ready = true; }
+}));
+</script></body></html>
