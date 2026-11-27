@@ -337,7 +337,9 @@ local function openGarage()
 	slideIn(garage, UDim2.new(0.5, -280, 1.2, 0))
 end
 gClose.MouseButton1Click:Connect(function() garage.Visible = false end)
-bGarage.MouseButton1Click:Connect(openGarage)
+bGarage.MouseButton1Click:Connect(function()
+	toast("🚗 Toque no ícone de CARRO lá em cima para escolher seu carro")
+end)
 spawnBtn.MouseButton1Click:Connect(function()
 	SpawnCar:FireServer(chosenCar.id, chosenColor, chosenLivery)
 	garage.Visible = false
@@ -404,7 +406,7 @@ corner(help, 18)
 stroke(help, GOLD, 2)
 help.Visible = false
 text(help, "COMO JOGAR", UDim2.new(1, 0, 0, 34), UDim2.new(0, 0, 0, 10), Enum.Font.GothamBlack, 22, GOLD)
-text(help, "🚗  Toque no carro do lado direito para abrir a GARAGEM e escolher seu carro.\n🕹️  Use o ANALÓGICO: para cima acelera, para baixo freia e dá ré, para os lados vira.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n💰  Descubra lugares do mapa para ganhar créditos e comprar carros novos.", UDim2.new(1, -30, 0, 180), UDim2.new(0, 15, 0, 48), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
+text(help, "🚗  Toque no ícone de CARRO na barra de cima para escolher seu carro (Rua, Esportivos e Super).\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n💰  Descubra lugares do mapa para ganhar créditos e comprar carros novos.", UDim2.new(1, -30, 0, 180), UDim2.new(0, 15, 0, 48), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
 local hClose = button(help, "ENTENDI", UDim2.new(0, 140, 0, 36), UDim2.new(0.5, -70, 1, -46), GOLD)
 hClose.TextColor3 = DARK
 hClose.MouseButton1Click:Connect(function() help.Visible = false end)
@@ -428,7 +430,9 @@ Notify.OnClientEvent:Connect(function(kind, a, b)
 		sDone:Play()
 		toast("🎉 Você comprou o " .. a .. "!")
 	elseif kind == "garage" then
-		openGarage()
+		toast("🚗 Toque no ícone de CARRO lá em cima para escolher seu carro")
+	elseif kind == "needcar" then
+		toast("Entre em um carro primeiro", rgb(255, 120, 120))
 	end
 end)
 
@@ -491,7 +495,7 @@ end)
 
 -- ------------------------------------------------------------------ places to discover + tutorial
 local TUT = {
-	{ "PASSO 1 de 5", "Toque no 🚗 à direita para abrir a GARAGEM e escolha seu primeiro carro." },
+	{ "PASSO 1 de 5", "Toque no ícone de CARRO na barra de cima, escolha um carro e entre nele." },
 	{ "PASSO 2 de 5", "Use o analógico para dirigir. Siga a luz dourada até o POSTO AURORA." },
 	{ "PASSO 3 de 5", "Agora volte ao ENCONTRO SOLARIS e pare em uma vaga livre (siga a luz)." },
 	{ "PASSO 4 de 5", "Saia do carro (botão de pular) e faça uma POSE 😎 do lado dele." },
@@ -544,7 +548,7 @@ task.spawn(function()
 				local s = currentSeat()
 				if step == 1 and s and s:IsA("VehicleSeat") then nextStep()
 				elseif step == 2 and PLACES[2] and (p - PLACES[2].pos).Magnitude < 35 then nextStep()
-				elseif step == 3 and (p - PLACES[1].pos).Magnitude < 70 and math.abs(speed) < 3 and s then nextStep()
+				elseif step == 3 and (p - PLACES[1].pos).Magnitude < 70 and s and s.AssemblyLinearVelocity.Magnitude < 3 then nextStep()
 				elseif step == 4 and posed and not s then nextStep()
 				elseif step == 5 and photo then nextStep() end
 			end

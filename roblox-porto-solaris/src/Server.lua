@@ -411,6 +411,75 @@ end
 
 -- ------------------------------------------------------------------ MEET LOT "Encontro Solaris" (spawn)
 local PALETTE = { rgb(235, 235, 240), rgb(20, 20, 24), rgb(200, 30, 40), rgb(30, 90, 200), rgb(120, 200, 230), rgb(250, 160, 30), rgb(40, 160, 90), rgb(120, 60, 180), rgb(210, 190, 150), rgb(160, 165, 172) }
+-- ------------------------------------------------------------------ VEHICLES for the FORTUNE spawner
+-- The cars in ServerStorage.Vehicles come from the vehicle pack, cleaned of every
+-- script and fitted with a clean A-Chassis 6C. Here they get their menu category,
+-- then the spawner is started.
+local ServerStorage = game:GetService("ServerStorage")
+local CATEGORY_BY_NAME = {
+	["Brava Hellstar"] = "Esportivos", ["Brava Charger Wide"] = "Esportivos", ["Mustero Mach"] = "Esportivos",
+	["Sora GT"] = "Esportivos", ["Kaiser Roadster"] = "Esportivos", ["Vulpes GT-S"] = "Esportivos",
+	["Toro SUV"] = "Super", ["Mistral W16"] = "Super", ["Cadenza V"] = "Super",
+	["Aurion B9"] = "Rua", ["Superbo"] = "Rua", ["Pontis G8"] = "Rua", ["Trackhawk SRT"] = "Rua",
+}
+local vehicles = ServerStorage:WaitForChild("Vehicles")
+for _, v in ipairs(vehicles:GetChildren()) do
+	v:SetAttribute("CarCategory", CATEGORY_BY_NAME[v.Name] or "Rua")
+end
+local SHOWCASE = vehicles:GetChildren()
+-- parked copy of a real car for the meet lot and the showroom (no scripts, anchored)
+local function showcase(cf, index)
+	if #SHOWCASE == 0 then return nil end
+	local src = SHOWCASE[((index or math.random(1, 1000)) - 1) % #SHOWCASE + 1]
+	local m = src:Clone()
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("LuaSourceContainer") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
+			d.Anchored = true
+		elseif d:IsA("VehicleSeat") or d:IsA("Seat") then
+			d.Disabled = true
+		end
+	end
+	local seat = m:FindFirstChild("DriveSeat")
+	if seat then m.PrimaryPart = seat end
+	-- rest the model on the ground: put the bottom of its bounding box at cf
+	local bcf, size = m:GetBoundingBox()
+	m:PivotTo(cf * bcf:ToObjectSpace(m:GetPivot()) + Vector3.new(0, size.Y / 2, 0))
+	m.Parent = map
+	return m
+end
+do
+	local spawnerScript = game:GetService("ServerScriptService"):FindFirstChild("SpawnerServer")
+	if spawnerScript then
+		pcall(function() spawnerScript.Enabled = true end)
+		pcall(function() spawnerScript.Disabled = false end)
+	end
+end
+
+-- paint shop: recolour the car you are sitting in
+local Paint = remote("Paint")
+Paint.OnServerEvent:Connect(function(plr, colorIndex, liveryIndex)
+	local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+	local seat = hum and hum.SeatPart
+	if not (seat and seat:IsA("VehicleSeat")) then
+		Notify:FireClient(plr, "needcar")
+		return
+	end
+	local car = seat.Parent
+	local colr = PALETTE[tonumber(colorIndex) or 1] or PALETTE[1]
+	local li = tonumber(liveryIndex) or 0
+	for _, p in ipairs(car:GetDescendants()) do
+		if p:IsA("BasePart") then
+			if p.Name == "Pintura" then p.Color = colr end
+			if p.Name == "Faixa" then
+				if li > 0 then p.Color = PALETTE[li] p.Transparency = 0 else p.Transparency = 1 end
+			end
+		end
+	end
+	Notify:FireClient(plr, "painted")
+end)
+
 do
 	local cx, cz = 45, 0
 	part({ Size = V(150, 0.3, 100), Position = V(cx + 60, 0.12, cz), Color = rgb(46, 48, 52), Material = Enum.Material.Asphalt })
@@ -424,9 +493,8 @@ do
 			if i == 11 then part({ Size = V(0.4, 0.32, 16), Position = V(x + 5, 0.14, z), Color = rgb(240, 240, 240), Material = Enum.Material.SmoothPlastic, CanCollide = false }) end
 			stall = stall + 1
 			-- showcase cars parked in about half the stalls
-			if math.random() < 0.55 then
-				local spec = CARS[math.random(1, #CARS)]
-				buildCar(spec, PALETTE[math.random(1, #PALETTE)], CFrame.new(x, 0.3, z) * CFrame.Angles(0, row == 1 and math.rad(180) or 0, 0), false, spec.stripe and rgb(255, 140, 0) or nil)
+			if math.random() < 0.3 then
+				showcase(CFrame.new(x, 0.3, z) * CFrame.Angles(0, row == 1 and math.rad(180) or 0, 0))
 			else
 				local mark = part({ Name = "Vaga", Size = V(9, 0.33, 15), Position = V(x, 0.14, z), Color = rgb(46, 48, 52), Material = Enum.Material.Asphalt, CanCollide = false, Transparency = 1 })
 				mark:SetAttribute("Vaga", true)
@@ -536,10 +604,11 @@ do
 	for i, id in ipairs(show) do
 		local x = cx - 21 + (i - 1) * 14
 		local tt = part({ Shape = Enum.PartType.Cylinder, Size = V(0.6, 14, 14), CFrame = CFrame.new(x, 0.6, cz + 6) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(30, 30, 34), Material = Enum.Material.Metal, Reflectance = 0.2 })
-		local car = buildCar(CAR_BY_ID[id], PALETTE[(i * 3) % #PALETTE + 1], CFrame.new(x, 0.9, cz + 6), false, id == "aero" and rgb(255, 140, 0) or nil)
+		local car = showcase(CFrame.new(x, 0.9, cz + 6), i * 3)
 		local ring = part({ Shape = Enum.PartType.Cylinder, Size = V(0.1, 14.4, 14.4), CFrame = CFrame.new(x, 0.32, cz + 6) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(120, 200, 255), Material = Enum.Material.Neon })
 		local _ = ring and tt
-		table.insert(turntables, { car = car, base = car:GetPivot(), speed = 0.35 + i * 0.05 })
+		if car then table.insert(turntables, { car = car, base = car:GetPivot(), speed = 0.35 + i * 0.05 }) end
+		local _ = id
 	end
 	-- garage counter NPC prompt
 	local desk = part({ Name = "Balcao", Size = V(8, 3, 3), Position = V(cx + 20, 1.7, cz - 10), Color = rgb(20, 20, 24), Material = Enum.Material.Marble })
