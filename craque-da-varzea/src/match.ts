@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { makeView, Style } from "./pixel";
+import { PixelPlayer, crowdTexture, pixelPitch } from "./sprites";
 import { makeHuman, animateHuman, HumanMesh, rng } from "./people";
 
 // 7-a-side 3D match. The user controls one player; everyone else is AI.
@@ -61,7 +62,9 @@ const ROLES = [
 ];
 
 interface P {
-  mesh: HumanMesh;
+  mesh: HumanMesh | null; // 3D style
+  pix: PixelPlayer | null; // pixel-art style
+  holder: THREE.Group;
   team: 0 | 1;
   role: string;
   home: THREE.Vector2;
@@ -210,7 +213,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     }
 
     // pitch + surroundings
-    const field = new THREE.Mesh(new THREE.PlaneGeometry(L + 4, W + 4), new THREE.MeshStandardMaterial({ map: fieldTexture(varzea), roughness: 1 }));
+    const field = new THREE.Mesh(new THREE.PlaneGeometry(L + 4, W + 4), new THREE.MeshStandardMaterial({ map: cfg.style === "pixel" ? pixelPitch(varzea) : fieldTexture(varzea), roughness: 1 }));
     field.rotation.x = -Math.PI / 2;
     field.receiveShadow = true;
     scene.add(field);
@@ -285,7 +288,9 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         t.repeat.set(4, 1);
         return t;
       })();
-      const standMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 1 });
+      const ct = cfg.style === "pixel" ? crowdTexture(cfg.home.c1, cfg.home.c2) : crowdTex;
+      if (cfg.style === "pixel") ct.repeat.set(3, 1);
+      const standMat = new THREE.MeshStandardMaterial({ map: ct, roughness: 1, emissive: 0xffffff, emissiveMap: ct, emissiveIntensity: cfg.style === "pixel" ? 0.35 : 0 });
       for (const [x, z, w, rot] of [[0, -W / 2 - 14, L + 30, 0], [0, W / 2 + 14, L + 30, Math.PI], [-L / 2 - 16, 0, W + 20, Math.PI / 2], [L / 2 + 16, 0, W + 20, -Math.PI / 2]] as const) {
         const st = new THREE.Mesh(new THREE.PlaneGeometry(w, 22), standMat);
         st.position.set(x, 9, z);
@@ -344,12 +349,32 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         const opts = isUser
           ? { kit: true, shirt: tc.c1, pants: tc.c2, socks: tc.c1, skin: cfg.user.look.skin, hair: cfg.user.look.hair, hairColor: cfg.user.look.hairColor, female: false }
           : { kit: true, shirt: gk ? 0x2b2b2b + t * 0x223300 : tc.c1, pants: gk ? 0x111111 : tc.c2, socks: gk ? 0x111111 : tc.c1, female: false };
-        const mesh = makeHuman(t * 50 + i * 7 + 3, opts);
-        scene.add(mesh.group);
+        const pixelArt = cfg.style === "pixel";
+        const SKINS = [0x5c3a21, 0x8d5524, 0xa0673a, 0xc68642, 0xe0ac69, 0xf1c27d];
+        const HAIRS = ["short", "buzz", "afro", "bald", "long", "short"];
+        const pix = pixelArt
+          ? new PixelPlayer({
+              skin: isUser ? cfg.user.look.skin : SKINS[(t * 7 + i * 3) % SKINS.length],
+              hair: isUser ? cfg.user.look.hair : HAIRS[(t * 5 + i * 2) % HAIRS.length],
+              hairColor: isUser ? cfg.user.look.hairColor : [0x120c08, 0x3b2314, 0x6b4423, 0xc8a165][(i + t) % 4],
+              shirt: gk ? (t ? 0xf77f00 : 0x2ec4b6) : tc.c1,
+              shirt2: gk ? 0x111111 : tc.c2 === tc.c1 ? 0xffffff : tc.c2,
+              shorts: gk ? 0x111111 : tc.c2,
+              socks: gk ? 0x111111 : tc.c1,
+              boots: isUser ? cfg.user.boots : 0x111111,
+              number: isUser ? cfg.user.number : gk ? 1 : [0, 3, 4, 8, 10, 11, 9][i],
+              gk,
+            })
+          : null;
+        const mesh = pixelArt ? null : makeHuman(t * 50 + i * 7 + 3, opts);
+        const holder = pix ? pix.group : mesh!.group;
+        scene.add(holder);
         const s = tc.strength / 100;
         const u = cfg.user.attrs;
         const p: P = {
           mesh,
+          pix,
+          holder,
           team: t,
           role: ro.r,
           home: new THREE.Vector2(ro.x * L * dir, ro.z * W),
@@ -375,7 +400,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85 }));
           ring.rotation.x = -Math.PI / 2;
           ring.position.y = 0.03;
-          mesh.group.add(ring);
+          holder.add(ring);
         }
         players.push(p);
       });
@@ -441,6 +466,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       ball.owner = null;
       ball.lastTouch = p;
       p.noTouch = 0.35;
+      if (p.pix) p.pix.kickT = 0.25;
       return dist;
     }
 
@@ -598,6 +624,13 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       // aiming feedback while the finger is down
       const aim = live && ball.owner === user ? controls.aiming() : null;
       aimRing.visible = aimLine.visible = !!aim && Math.hypot(aim.dx, aim.dy) > 14;
+      if (aim) {
+        // face the goal while aiming, like lining up a shot
+        const goalDir = attackDir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        let d = goalDir - user.heading;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        user.heading += d * Math.min(1, dt * 12);
+      }
       if (aim && aimRing.visible) {
         const rr = ringAt(aim.held);
         aimRing.scale.setScalar(rr);
@@ -843,6 +876,11 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           let d = Math.atan2(p.vel.x, p.vel.z) - p.heading;
           d = Math.atan2(Math.sin(d), Math.cos(d));
           p.heading += d * Math.min(1, dt * 10);
+        } else if (ball.owner === p) {
+          const goalDir = p.team === 0 ? Math.PI / 2 : -Math.PI / 2;
+          let d = goalDir - p.heading;
+          d = Math.atan2(Math.sin(d), Math.cos(d));
+          p.heading += d * Math.min(1, dt * 3);
         } else if (ball.owner !== p) {
           const tb = Math.atan2(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
           let d = tb - p.heading;
@@ -850,13 +888,15 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           p.heading += d * Math.min(1, dt * 4);
         }
         p.phase += dt * sp * 1.9;
-        animateHuman(p.mesh, p.phase, Math.min(2, sp / 4), t);
-        if (p.role === "GK" && ball.vel.length() > 14 && Math.abs(ball.pos.x - p.pos.x) < 6) {
-          p.mesh.lArm.rotation.z = -1.2;
-          p.mesh.rArm.rotation.z = 1.2;
-        }
-        p.mesh.group.position.copy(p.pos);
-        p.mesh.group.rotation.y = p.heading;
+        if (p.mesh) {
+          animateHuman(p.mesh, p.phase, Math.min(2, sp / 4), t);
+          if (p.role === "GK" && ball.vel.length() > 14 && Math.abs(ball.pos.x - p.pos.x) < 6) {
+            p.mesh.lArm.rotation.z = -1.2;
+            p.mesh.rArm.rotation.z = 1.2;
+          }
+          p.holder.rotation.y = p.heading;
+        } else if (p.pix) p.pix.update(dt, p.heading, sp, camera.position, p.pos);
+        p.holder.position.copy(p.pos);
         if (p.tag) p.tag.position.set(p.pos.x, 2.45, p.pos.z);
       }
       ballM.position.copy(ball.pos);

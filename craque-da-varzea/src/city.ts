@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { makeView, Style } from "./pixel";
+import { PixelPlayer } from "./sprites";
 import { makeHuman, animateHuman, HumanMesh, rng } from "./people";
 
 // A short walk around the neighbourhood: fans recognise the player and ask for autographs.
@@ -13,7 +14,9 @@ export interface CityCfg {
 }
 
 interface Fan {
-  mesh: HumanMesh;
+  mesh: HumanMesh | null;
+  pix: PixelPlayer | null;
+  holder: THREE.Group;
   pos: THREE.Vector3;
   heading: number;
   phase: number;
@@ -102,8 +105,26 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
       scene.add(trunk, crown);
     }
 
-    const me = makeHuman(1, { kit: false, shirt: cfg.shirt, pants: 0x1d3557, skin: cfg.look.skin, hair: cfg.look.hair, hairColor: cfg.look.hairColor, female: false });
-    scene.add(me.group);
+    const pixelArt = cfg.style === "pixel";
+    const casual = (seed: number, shirt?: number) => {
+      const rr = rng(seed);
+      const pick = <T,>(a: T[]) => a[Math.floor(rr() * a.length)];
+      return new PixelPlayer({
+        skin: pick([0x5c3a21, 0x8d5524, 0xa0673a, 0xc68642, 0xe0ac69, 0xf1c27d]),
+        hair: pick(["short", "buzz", "afro", "bald", "long"]),
+        hairColor: pick([0x120c08, 0x3b2314, 0x6b4423, 0xc8a165]),
+        shirt: shirt ?? pick([0xe63946, 0x2ec4b6, 0xffd23f, 0x6a4c93, 0xffffff, 0x1d3557, 0xf77f00]),
+        shirt2: 0xffffff,
+        shorts: pick([0x1d3557, 0x222222, 0x6b705c, 0xdda15e]),
+        socks: 0xffffff,
+        boots: pick([0x111111, 0xffffff]),
+        number: -1,
+      }, 1.85);
+    };
+    const mePix = pixelArt ? new PixelPlayer({ skin: cfg.look.skin, hair: cfg.look.hair, hairColor: cfg.look.hairColor, shirt: cfg.shirt, shirt2: 0xffffff, shorts: 0x1d3557, socks: 0xffffff, boots: 0x111111, number: -1 }, 1.9) : null;
+    const me3d = pixelArt ? null : makeHuman(1, { kit: false, shirt: cfg.shirt, pants: 0x1d3557, skin: cfg.look.skin, hair: cfg.look.hair, hairColor: cfg.look.hairColor, female: false });
+    const meHolder = mePix ? mePix.group : me3d!.group;
+    scene.add(meHolder);
     const pos = new THREE.Vector3(0, 0, 10);
     let heading = Math.PI;
     let phase = 0;
@@ -111,17 +132,23 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
     const fans: Fan[] = [];
     const nFans = Math.max(3, Math.min(14, Math.round(3 + cfg.fame / 8)));
     for (let i = 0; i < nFans; i++) {
-      const mesh = makeHuman(500 + i * 13, { shirt: i % 3 === 0 ? cfg.shirt : undefined });
-      scene.add(mesh.group);
+      const pix = pixelArt ? casual(500 + i * 13, i % 3 === 0 ? cfg.shirt : undefined) : null;
+      const mesh = pixelArt ? null : makeHuman(500 + i * 13, { shirt: i % 3 === 0 ? cfg.shirt : undefined });
+      const holder = pix ? pix.group : mesh!.group;
+      scene.add(holder);
       const a = r() * Math.PI * 2,
         d = 10 + r() * 18;
-      const f: Fan = { mesh, pos: new THREE.Vector3(Math.cos(a) * d, 0, Math.sin(a) * d), heading: 0, phase: r() * 6, state: "walk", target: new THREE.Vector3(), bubble: bubbleSprite(r() < 0.5 ? "AUTÓGRAFO!" : "É ELE!!"), t: r() * 6 };
+      const f: Fan = { mesh, pix, holder, pos: new THREE.Vector3(Math.cos(a) * d, 0, Math.sin(a) * d), heading: 0, phase: r() * 6, state: "walk", target: new THREE.Vector3(), bubble: bubbleSprite(r() < 0.5 ? "AUTÓGRAFO!" : "É ELE!!"), t: r() * 6 };
       f.bubble.visible = false;
       scene.add(f.bubble);
       f.target.set((r() - 0.5) * 50, 0, (r() - 0.5) * 50);
       fans.push(f);
     }
 
+    const anim = (f: Fan, ph: number, amount: number, tt: number, dt: number) => {
+      if (f.mesh) animateHuman(f.mesh, ph, amount, tt);
+      else f.pix!.update(dt, f.heading, amount * 3, camera.position, f.pos);
+    };
     let autographs = 0,
       selfies = 0;
     let busy = false;
@@ -154,9 +181,11 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
       pos.z = THREE.MathUtils.clamp(pos.z, -28, 28);
       if (pos.length() < 5) pos.setLength(5);
       phase += dt * 6.5 * amt;
-      animateHuman(me, phase, busy ? 0 : amt, t);
-      me.group.position.copy(pos);
-      me.group.rotation.y = heading;
+      if (me3d) {
+        animateHuman(me3d, phase, busy ? 0 : amt, t);
+        me3d.group.rotation.y = heading;
+      } else mePix!.update(dt, heading, busy ? 0 : amt * 4, camera.position, pos);
+      meHolder.position.copy(pos);
       // fans
       let nearest: Fan | null = null;
       for (const f of fans) {
@@ -172,7 +201,7 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
           f.pos.addScaledVector(to, 1.3 * dt);
           f.heading = Math.atan2(to.x, to.z);
           f.phase += dt * 6;
-          animateHuman(f.mesh, f.phase, 1, t);
+          anim(f, f.phase, 1, t, dt);
         } else if (f.state === "approach") {
           const to = pos.clone().sub(f.pos).setY(0);
           if (to.length() > 1.6) {
@@ -180,30 +209,30 @@ export function walkCity(host: HTMLElement, cfg: CityCfg, io: { moveX: () => num
             f.pos.addScaledVector(to, 2.8 * dt);
             f.heading = Math.atan2(to.x, to.z);
             f.phase += dt * 9;
-            animateHuman(f.mesh, f.phase, 1.6, t);
+            anim(f, f.phase, 1.6, t, dt);
           } else {
             f.state = "wait";
           }
         } else if (f.state === "wait") {
           f.heading = Math.atan2(pos.x - f.pos.x, pos.z - f.pos.z);
-          animateHuman(f.mesh, 0, 0, t);
-          f.mesh.rArm.rotation.x = -1.2 + Math.sin(t * 8) * 0.3; // waving
+          anim(f, 0, 0, t, dt);
+          if (f.mesh) f.mesh.rArm.rotation.x = -1.2 + Math.sin(t * 8) * 0.3; // waving
           if (d < 2.6 && (!nearest || d < nearest.pos.distanceTo(pos))) nearest = f;
           if (d > 6) f.state = "approach";
         } else {
           // happy fan jumps and walks away
           f.t += dt;
           f.pos.y = Math.abs(Math.sin(f.t * 8)) * 0.3 * Math.max(0, 1 - f.t / 1.5);
-          animateHuman(f.mesh, 0, 0, t);
-          f.mesh.lArm.rotation.x = f.mesh.rArm.rotation.x = -2.8;
+          anim(f, 0, 0, t, dt);
+          if (f.mesh) f.mesh.lArm.rotation.x = f.mesh.rArm.rotation.x = -2.8;
           if (f.t > 1.6) {
             f.state = "walk";
             f.t = 0;
             f.pos.y = 0;
           }
         }
-        f.mesh.group.position.copy(f.pos);
-        f.mesh.group.rotation.y = f.heading;
+        f.holder.position.copy(f.pos);
+        if (f.mesh) f.holder.rotation.y = f.heading;
         f.bubble.position.set(f.pos.x, 2.5, f.pos.z);
       }
       io.prompt(!!nearest && !busy);

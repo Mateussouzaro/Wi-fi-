@@ -24,7 +24,7 @@ export function setStyle(s: Style) {
 }
 
 const RETRO = {
-  uniforms: { tDiffuse: { value: null }, levels: { value: 7 }, res: { value: new THREE.Vector2(1, 1) } },
+  uniforms: { tDiffuse: { value: null }, levels: { value: 24 }, res: { value: new THREE.Vector2(1, 1) } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float levels; uniform vec2 res; varying vec2 vUv;
     float bayer(vec2 p){
@@ -40,9 +40,9 @@ const RETRO = {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       // punchier, slightly saturated retro palette
       float l = dot(c, vec3(0.299,0.587,0.114));
-      c = mix(vec3(l), c, 1.25);
-      c = (c - 0.5) * 1.1 + 0.5;
-      vec3 d = c + bayer(vUv * res) / levels;
+      c = mix(vec3(l), c, 1.15);
+      c = (c - 0.5) * 1.06 + 0.5;
+      vec3 d = c + bayer(vUv * res) * 0.0;
       c = floor(d * levels + 0.5) / levels;
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
@@ -50,7 +50,7 @@ const RETRO = {
 
 export function makeView(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, style: Style, quality: "alta" | "baixa") {
   const canvas = renderer.domElement;
-  const px = style === "pixel" ? (quality === "alta" ? 3 : 4) : 1;
+  const px = style === "pixel" ? (quality === "alta" ? 2.5 : 3.2) : 1;
   let composer: EffectComposer | null = null;
   let retro: ShaderPass | null = null;
   if (style === "pixel") {
