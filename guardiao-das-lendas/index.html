@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Guardião das Lendas</title>
+    <style>
+      :root { --ink: #fdf6e3; --gold: #f6c453; --green: #52b788; --panel: rgba(10, 18, 14, 0.72); }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #071009; color: var(--ink); font-family: "Trebuchet MS", system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+      #stage { position: fixed; inset: 0; }
+      #stage canvas { display: block; width: 100%; height: 100%; }
+      button { font: inherit; color: inherit; }
+
+      #title { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.15), rgba(4, 12, 6, 0.8)); }
+      #title.on { display: flex; }
+      #title .kicker { letter-spacing: 0.35em; font-size: 12px; color: var(--green); }
+      #title h1 { margin: 6px 0 4px; font-size: clamp(34px, 8vw, 72px); letter-spacing: 0.06em; color: var(--gold); text-shadow: 0 4px 0 #6a3d10, 0 0 30px rgba(246, 196, 83, 0.4); font-weight: 900; }
+      #title p { max-width: 560px; margin: 6px 0 18px; color: #d8e8d0; line-height: 1.45; font-size: 14px; }
+      .tbtn { display: block; width: min(300px, 100%); margin: 5px auto; padding: 12px 16px; border-radius: 14px; border: 2px solid var(--gold); background: rgba(10, 20, 12, 0.7); font-size: 16px; font-weight: 700; cursor: pointer; }
+      .tbtn.main { background: var(--gold); color: #2a1a06; }
+      .tbtn.small { font-size: 12px; padding: 8px; width: min(200px, 100%); opacity: 0.85; border-width: 1px; }
+
+      #hud { display: none; }
+      #hud.on { display: block; }
+      #top { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); z-index: 5; pointer-events: none; display: flex; flex-direction: column; gap: 6px; max-width: 46vw; }
+      #hearts span { font-size: 22px; color: rgba(255, 255, 255, 0.25); text-shadow: 0 2px 0 #000; margin-right: 1px; }
+      #hearts span.full { color: #e63946; }
+      #amuletRow { display: flex; gap: 8px; align-items: center; }
+      #amulets { display: flex; gap: 5px; }
+      #amulets span { width: 16px; height: 22px; border-radius: 45% 45% 50% 50%; border: 2px solid rgba(255, 255, 255, 0.4); background: rgba(0, 0, 0, 0.35); }
+      #amulets span.on { background: radial-gradient(circle at 35% 30%, #b7f5c9, #2d9d5b 60%, #14532d); border-color: #b7f5c9; box-shadow: 0 0 10px #52b788; }
+      #keys { font-size: 14px; text-shadow: 0 2px 0 #000; }
+      #obj { display: none; padding: 6px 10px; background: var(--panel); border-left: 3px solid var(--green); font-size: 13px; line-height: 1.3; }
+      #obj.on { display: block; }
+      #boss { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(420px, 42vw); z-index: 5; display: none; text-align: center; pointer-events: none; }
+      #boss.on { display: block; }
+      #bossName { font-size: 12px; letter-spacing: 0.15em; font-weight: 800; text-shadow: 0 2px 0 #000; }
+      #bossBar { height: 10px; margin-top: 4px; background: rgba(0, 0, 0, 0.6); border: 2px solid #fff3; border-radius: 6px; overflow: hidden; }
+      #bossFill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff7b00, #e63946); transition: width 0.2s; }
+      body.cine #top, body.cine #boss, body.cine #pad, body.cine #stick { display: none !important; }
+
+      #stick { position: fixed; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.06); z-index: 4; display: none; pointer-events: none; }
+      #stick.on { display: block; }
+      #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.5); }
+      #pad { position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 6; width: 210px; height: 190px; }
+      #pad .b { position: absolute; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.7); background: rgba(10, 20, 12, 0.55); display: grid; place-items: center; font-size: 28px; cursor: pointer; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4); }
+      #pad .b:active { transform: translateY(3px); box-shadow: none; }
+      #bAtk { width: 92px; height: 92px; right: 0; bottom: 0; font-size: 38px !important; border-color: var(--gold) !important; }
+      #bRoll { width: 64px; height: 64px; right: 104px; bottom: 6px; }
+      #bBow { width: 64px; height: 64px; right: 14px; bottom: 104px; display: none !important; }
+      #bBow.on { display: grid !important; }
+      #bAct { position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: calc(214px + env(safe-area-inset-bottom)); z-index: 6; display: none; padding: 12px 16px; border-radius: 14px; border: 2px solid var(--gold); background: rgba(30, 20, 6, 0.85); font-size: 15px; font-weight: 700; cursor: pointer; animation: pulse 1.3s infinite; }
+      #bAct.on { display: block; }
+      @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(246, 196, 83, 0.18); } }
+
+      #sub { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(6vh + env(safe-area-inset-bottom)); width: min(760px, calc(100% - 24px)); z-index: 12; display: none; grid-template-columns: 54px 1fr; gap: 12px; align-items: center; padding: 12px 14px; background: rgba(6, 12, 8, 0.85); border: 2px solid rgba(246, 196, 83, 0.5); border-radius: 14px; }
+      #sub.on { display: grid; animation: fadein 0.3s; }
+      #subFace { width: 54px; height: 54px; border-radius: 50%; border: 3px solid #fff; display: grid; place-items: center; font-size: 28px; background: rgba(255, 255, 255, 0.08); }
+      #subWho { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+      #subWho small { text-transform: none; font-weight: 400; letter-spacing: 0; opacity: 0.75; }
+      #subText { margin-top: 3px; font-size: 16px; line-height: 1.4; }
+      @keyframes fadein { from { opacity: 0; } }
+
+      body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 10; transition: height 0.5s; pointer-events: none; }
+      body::before { top: 0; }
+      body::after { bottom: 0; }
+      body.cine::before, body.cine::after { height: 6vh; }
+      #banner { position: fixed; top: 24%; left: 0; right: 0; z-index: 13; text-align: center; font-size: clamp(24px, 5vw, 40px); font-weight: 900; color: var(--gold); text-shadow: 0 3px 0 #000, 0 0 24px rgba(0, 0, 0, 0.6); opacity: 0; pointer-events: none; }
+      #banner small { display: block; font-size: 15px; color: #fff; font-weight: 600; margin-top: 4px; }
+      #banner.on { animation: ban 3.2s ease-out; }
+      @keyframes ban { 0% { opacity: 0; transform: scale(1.2); } 12%, 70% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+      #hurt { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(220, 20, 20, 0.55)); }
+      #hurt.on { animation: hurt 0.5s; }
+      @keyframes hurt { 0% { opacity: 1; } 100% { opacity: 0; } }
+      #fade { position: fixed; inset: 0; z-index: 15; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.8s; }
+      #fade.on { opacity: 1; }
+      #end { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; background: rgba(0, 0, 0, 0.5); }
+      #end.on { display: flex; animation: fadein 2s; }
+      #end h2 { font-size: clamp(30px, 7vw, 56px); margin: 0; color: var(--gold); text-shadow: 0 4px 0 #6a3d10; }
+      #end p { max-width: 520px; color: #e0eed8; line-height: 1.5; }
+      #rot { display: none; }
+      @media (orientation: portrait) and (max-width: 700px) {
+        #pad { transform: scale(0.85); transform-origin: right bottom; }
+        #top { max-width: 60vw; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="title" class="on">
+      <div class="kicker">UMA AVENTURA DO FOLCLORE BRASILEIRO</div>
+      <h1>GUARDIÃO DAS LENDAS</h1>
+      <p>O Coronel Ferrabrás roubou os muiraquitãs dos encantados. O Curupira, a Iara e o Boitatá enlouqueceram. Pegue a espada do seu avô, Kauã, e devolva a vida à Ilha das Lendas.</p>
+      <button class="tbtn main" id="tNew">Nova aventura</button>
+      <button class="tbtn" id="tCont">Continuar</button>
+      <button class="tbtn small" id="tQ">Gráficos</button>
+    </div>
+
+    <div id="hud">
+      <div id="top">
+        <div id="hearts"></div>
+        <div id="amuletRow"><div id="amulets"></div><div id="keys"></div></div>
+        <div id="obj"></div>
+      </div>
+      <div id="boss"><div id="bossName"></div><div id="bossBar"><div id="bossFill"></div></div></div>
+      <div id="stick"><div id="knob"></div></div>
+      <button id="bAct"></button>
+      <div id="pad">
+        <button class="b" id="bAtk">⚔️</button>
+        <button class="b" id="bRoll">🌀</button>
+        <button class="b" id="bBow">🏹</button>
+      </div>
+    </div>
+
+    <div id="sub"><div id="subFace"></div><div><div id="subWho"></div><div id="subText"></div></div></div>
+    <div id="banner"></div>
+    <div id="hurt"></div>
+    <div id="fade" class="on"></div>
+    <div id="end">
+      <h2>FIM</h2>
+      <p><b>Guardião das Lendas</b><br />Os encantados voltaram a proteger a Ilha das Lendas. Obrigado por jogar!</p>
+      <button class="tbtn main" id="endBtn">Voltar ao início</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
