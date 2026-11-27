@@ -1,0 +1,1189 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+<Item class="Workspace" referent="RBX00000000000000000000000000000001"><Properties><string name="Name">Workspace</string><float name="Gravity">196.2</float></Properties></Item>
+<Item class="Lighting" referent="RBX00000000000000000000000000000002"><Properties><string name="Name">Lighting</string></Properties></Item>
+<Item class="ReplicatedStorage" referent="RBX00000000000000000000000000000003"><Properties><string name="Name">ReplicatedStorage</string></Properties></Item>
+<Item class="ServerScriptService" referent="RBX00000000000000000000000000000005"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000000000000000000000000000004"><Properties><string name="Name">CoracaoDaFloresta</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — server: builds the whole map, checkpoints, obstacles,
+-- fragments, the Dr. Fumaça boss and the story beats.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+local DataStoreService = game:GetService("DataStoreService")
+
+local store = nil
+pcall(function() store = DataStoreService:GetDataStore("CoracaoDaFloresta_v1") end)
+
+-- remotes
+local Story = Instance.new("RemoteEvent")
+Story.Name = "Story"
+Story.Parent = ReplicatedStorage
+local Zone = Instance.new("RemoteEvent")
+Zone.Name = "Zone"
+Zone.Parent = ReplicatedStorage
+
+local map = Instance.new("Folder")
+map.Name = "Mapa"
+map.Parent = workspace
+
+-- ------------------------------------------------------------------ lighting
+Lighting.ClockTime = 15.5
+Lighting.Brightness = 2.2
+Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 130)
+Lighting.Ambient = Color3.fromRGB(70, 80, 70)
+Lighting.FogColor = Color3.fromRGB(190, 220, 200)
+Lighting.FogEnd = 900
+Lighting.GlobalShadows = true
+local atmo = Instance.new("Atmosphere")
+atmo.Density = 0.32
+atmo.Haze = 1.4
+atmo.Color = Color3.fromRGB(200, 230, 210)
+atmo.Decay = Color3.fromRGB(110, 140, 110)
+atmo.Parent = Lighting
+local bloom = Instance.new("BloomEffect")
+bloom.Intensity = 0.6
+bloom.Threshold = 1.4
+bloom.Size = 28
+bloom.Parent = Lighting
+local rays = Instance.new("SunRaysEffect")
+rays.Intensity = 0.06
+rays.Parent = Lighting
+local cc = Instance.new("ColorCorrectionEffect")
+cc.Saturation = 0.15
+cc.Contrast = 0.08
+cc.Parent = Lighting
+
+-- ------------------------------------------------------------------ helpers
+local function part(props)
+	local p = Instance.new("Part")
+	p.Anchored = true
+	if props.Shape then p.Shape = props.Shape end
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for k, v in pairs(props) do
+		if k ~= "Parent" and k ~= "Shape" then p[k] = v end
+	end
+	p.Parent = props.Parent or map
+	return p
+end
+
+local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
+
+local function label(p, text, color)
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 220, 0, 50)
+	bb.StudsOffset = Vector3.new(0, p.Size.Y / 2 + 2.5, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 90
+	bb.Parent = p
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, 0, 1, 0)
+	t.BackgroundTransparency = 1
+	t.Text = text
+	t.TextColor3 = color or Color3.new(1, 1, 1)
+	t.TextStrokeTransparency = 0.3
+	t.Font = Enum.Font.FredokaOne
+	t.TextScaled = true
+	t.Parent = bb
+	return bb
+end
+
+local function sound(id, parent, vol)
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = vol or 0.6
+	s.Parent = parent
+	return s
+end
+
+-- touching a "kill" part resets the player to their checkpoint
+local function killer(p)
+	p:SetAttribute("Kill", true)
+	p.Touched:Connect(function(hit)
+		local hum = hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then hum.Health = 0 end
+	end)
+	return p
+end
+
+-- ------------------------------------------------------------------ player data
+local data = {} -- [player] = {stage=, frags={}}
+
+local CHAPTER_START = {} -- stage index -> CFrame
+local function stageCF(stage)
+	return CHAPTER_START[stage] or CHAPTER_START[0]
+end
+
+local function saveData(plr)
+	local d = data[plr]
+	if not d or not store then return end
+	pcall(function()
+		store:SetAsync("p_" .. plr.UserId, { stage = d.stage, frags = d.frags, done = d.done })
+	end)
+end
+
+local function setStage(plr, s)
+	local d = data[plr]
+	if not d then return end
+	if s > d.stage then
+		d.stage = s
+		local ls = plr:FindFirstChild("leaderstats")
+		if ls then ls.Fase.Value = s end
+		saveData(plr)
+	end
+end
+
+-- ------------------------------------------------------------------ checkpoints
+local checkpoints = {}
+local function checkpoint(stage, pos, chapterStart)
+	local cp = part({ Name = "Checkpoint" .. stage, Size = Vector3.new(8, 1, 8), Position = pos, Color = rgb(255, 214, 102), Material = Enum.Material.Neon, Transparency = 0.15 })
+	local flag = part({ Size = Vector3.new(0.4, 7, 0.4), Position = pos + Vector3.new(3.5, 3.5, 3.5), Color = rgb(120, 90, 60), Material = Enum.Material.Wood })
+	local cloth = part({ Size = Vector3.new(0.2, 2, 3), Position = pos + Vector3.new(3.5, 6, 2), Color = rgb(82, 183, 136), Material = Enum.Material.Fabric })
+	checkpoints[stage] = cp
+	if chapterStart then CHAPTER_START[stage] = CFrame.new(pos + Vector3.new(0, 4, 0)) end
+	if not CHAPTER_START[stage] then CHAPTER_START[stage] = CFrame.new(pos + Vector3.new(0, 4, 0)) end
+	cp.Touched:Connect(function(hit)
+		local plr = Players:GetPlayerFromCharacter(hit.Parent)
+		if plr and data[plr] and data[plr].stage < stage then
+			setStage(plr, stage)
+			Story:FireClient(plr, "checkpoint", stage)
+		end
+	end)
+	return cp
+end
+
+-- ------------------------------------------------------------------ moving things
+local spinners = {} -- {part, axis, speed, origin}
+local function spinner(p, speed)
+	table.insert(spinners, { p = p, speed = speed, base = p.CFrame })
+	return p
+end
+local function mover(p, offset, time)
+	local goal = { CFrame = p.CFrame + offset }
+	local tw = TweenService:Create(p, TweenInfo.new(time, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), goal)
+	tw:Play()
+	return p
+end
+-- platforms that fade away a moment after being stepped on
+local function vanishing(p)
+	local busy = false
+	p.Touched:Connect(function(hit)
+		if busy or not Players:GetPlayerFromCharacter(hit.Parent) then return end
+		busy = true
+		for i = 1, 6 do
+			p.Transparency = i / 8
+			task.wait(0.1)
+		end
+		p.CanCollide = false
+		p.Transparency = 1
+		task.wait(2.5)
+		p.CanCollide = true
+		p.Transparency = 0
+		busy = false
+	end)
+	return p
+end
+-- trampoline: launches the player up
+local function bouncer(p, power)
+	p.Touched:Connect(function(hit)
+		local root = hit.Parent and hit.Parent:FindFirstChild("HumanoidRootPart")
+		if root and Players:GetPlayerFromCharacter(hit.Parent) then
+			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, power, root.AssemblyLinearVelocity.Z)
+		end
+	end)
+	return p
+end
+
+-- ------------------------------------------------------------------ fragments
+local FRAG_COLORS = { rgb(72, 202, 228), rgb(82, 183, 136), rgb(199, 125, 255), rgb(255, 158, 0) }
+local fragmentParts = {}
+local onFragment -- set later
+local function fragment(i, pos)
+	local f = part({ Name = "Fragmento" .. i, Shape = Enum.PartType.Ball, Size = Vector3.new(3, 3, 3), Position = pos, Color = FRAG_COLORS[i], Material = Enum.Material.Neon, CanCollide = false })
+	local light = Instance.new("PointLight")
+	light.Color = FRAG_COLORS[i]
+	light.Range = 18
+	light.Brightness = 3
+	light.Parent = f
+	local base = part({ Size = Vector3.new(6, 1, 6), Position = pos - Vector3.new(0, 3.5, 0), Color = rgb(90, 90, 90), Material = Enum.Material.Slate })
+	label(f, "Fragmento do Coração", FRAG_COLORS[i])
+	local pp = Instance.new("ProximityPrompt")
+	pp.ActionText = "Pegar fragmento"
+	pp.ObjectText = "Fragmento " .. i
+	pp.HoldDuration = 0.4
+	pp.MaxActivationDistance = 12
+	pp.RequiresLineOfSight = false
+	pp.Parent = f
+	pp.Triggered:Connect(function(plr) onFragment(plr, i) end)
+	spinner(f, 1.5)
+	fragmentParts[i] = f
+	return f
+end
+
+-- ------------------------------------------------------------------ NPCs (blocky, built from parts)
+local function npc(name, pos, colors, faceDir)
+	local m = Instance.new("Model")
+	m.Name = name
+	local function bp(n, size, offset, color, mat)
+		local p = part({ Name = n, Size = size, CFrame = CFrame.new(pos) * CFrame.Angles(0, faceDir or 0, 0) * CFrame.new(offset), Color = color, Material = mat or Enum.Material.SmoothPlastic, Parent = m })
+		return p
+	end
+	bp("Perna1", Vector3.new(1, 2, 1), Vector3.new(-0.5, 1, 0), colors.pants)
+	bp("Perna2", Vector3.new(1, 2, 1), Vector3.new(0.5, 1, 0), colors.pants)
+	local torso = bp("Torso", Vector3.new(2, 2, 1), Vector3.new(0, 3, 0), colors.shirt)
+	bp("Braco1", Vector3.new(1, 2, 1), Vector3.new(-1.5, 3, 0), colors.skin)
+	bp("Braco2", Vector3.new(1, 2, 1), Vector3.new(1.5, 3, 0), colors.skin)
+	local head = bp("Head", Vector3.new(2, 1, 1), Vector3.new(0, 4.5, 0), colors.skin)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Head
+	mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
+	mesh.Parent = head
+	local face = Instance.new("Decal")
+	face.Texture = "rbxasset://textures/face.png"
+	face.Face = Enum.NormalId.Front
+	face.Parent = head
+	if colors.hat then
+		bp("Chapeu", Vector3.new(2.4, 0.4, 2.4), Vector3.new(0, 5.2, 0), colors.hat)
+		bp("Copa", Vector3.new(1.4, 0.8, 1.4), Vector3.new(0, 5.6, 0), colors.hat)
+	end
+	m.PrimaryPart = torso
+	m.Parent = map
+	label(head, name, colors.label)
+	return m, head
+end
+
+-- ================================================================== WORLD
+-- Hub: the explorers' camp in a clearing (around the origin)
+local function ground(pos, size, color, mat)
+	return part({ Size = size, Position = pos, Color = color, Material = mat or Enum.Material.Grass })
+end
+ground(Vector3.new(0, -2, 0), Vector3.new(220, 4, 220), rgb(86, 140, 60))
+-- river around the camp (decorative)
+part({ Size = Vector3.new(400, 1, 400), Position = Vector3.new(0, -5, 0), Color = rgb(40, 110, 130), Material = Enum.Material.Glass, Transparency = 0.35, CanCollide = false })
+
+local spawn = Instance.new("SpawnLocation")
+spawn.Anchored = true
+spawn.Size = Vector3.new(10, 1, 10)
+spawn.Position = Vector3.new(0, 0.5, 20)
+spawn.Color = rgb(255, 214, 102)
+spawn.Material = Enum.Material.Neon
+spawn.Transparency = 0.3
+spawn.Duration = 0
+spawn.Parent = map
+CHAPTER_START[0] = CFrame.new(0, 4, 20)
+
+-- trees around the camp
+local function tree(pos, h)
+	h = h or (14 + math.random() * 10)
+	part({ Size = Vector3.new(2.5, h, 2.5), Position = pos + Vector3.new(0, h / 2, 0), Color = rgb(101, 72, 48), Material = Enum.Material.Wood })
+	for i = 1, 3 do
+		local s = 12 - i * 2.5 + math.random() * 3
+		part({ Shape = Enum.PartType.Ball, Size = Vector3.new(s, s * 0.8, s), Position = pos + Vector3.new(math.random(-2, 2), h + i * 1.6 - 2, math.random(-2, 2)), Color = Color3.fromHSV(0.27 + math.random() * 0.06, 0.6, 0.35 + math.random() * 0.15), Material = Enum.Material.Grass, CanCollide = false })
+	end
+end
+math.randomseed(42)
+for i = 1, 70 do
+	local a = math.random() * math.pi * 2
+	local r = 55 + math.random() * 45
+	tree(Vector3.new(math.cos(a) * r, 0, math.sin(a) * r))
+end
+-- tents and the campfire
+local function tent(pos, color, ry)
+	local w = part({ Size = Vector3.new(8, 0.4, 7), CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) * CFrame.Angles(0, ry, 0) * CFrame.Angles(0, 0, math.rad(40)) * CFrame.new(-2.6, 0, 0), Color = color, Material = Enum.Material.Fabric })
+	local w2 = part({ Size = Vector3.new(8, 0.4, 7), CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) * CFrame.Angles(0, ry, 0) * CFrame.Angles(0, 0, math.rad(-40)) * CFrame.new(2.6, 0, 0), Color = color, Material = Enum.Material.Fabric })
+	return w, w2
+end
+tent(Vector3.new(-24, 0, -8), rgb(231, 111, 81), 0.3)
+tent(Vector3.new(24, 0, -10), rgb(42, 157, 143), -0.4)
+tent(Vector3.new(-14, 0, 22), rgb(233, 196, 106), 1.2)
+local fire = part({ Size = Vector3.new(3, 1, 3), Position = Vector3.new(0, 0.5, 4), Color = rgb(80, 60, 40), Material = Enum.Material.Wood })
+local flames = Instance.new("Fire")
+flames.Size = 6
+flames.Heat = 9
+flames.Parent = fire
+local fl = Instance.new("PointLight")
+fl.Color = rgb(255, 160, 80)
+fl.Range = 22
+fl.Brightness = 2
+fl.Parent = fire
+local fireSound = sound("rbxasset://sounds/action_falling.mp3", fire, 0)
+for i = 0, 5 do
+	local a = i / 6 * math.pi * 2
+	part({ Size = Vector3.new(4, 1.2, 1.4), CFrame = CFrame.new(math.cos(a) * 6, 0.6, 4 + math.sin(a) * 6) * CFrame.Angles(0, -a, 0), Color = rgb(110, 80, 50), Material = Enum.Material.Wood })
+end
+-- the empty crystal pedestal (the stolen Heart of the Forest)
+local pedestal = part({ Size = Vector3.new(8, 3, 8), Position = Vector3.new(0, 1.5, -22), Color = rgb(120, 115, 105), Material = Enum.Material.Slate })
+local heart = part({ Name = "Coracao", Shape = Enum.PartType.Ball, Size = Vector3.new(6, 6, 6), Position = Vector3.new(0, 7, -22), Color = rgb(82, 255, 160), Material = Enum.Material.Neon, Transparency = 1, CanCollide = false })
+local heartLight = Instance.new("PointLight")
+heartLight.Color = rgb(82, 255, 160)
+heartLight.Range = 60
+heartLight.Brightness = 0
+heartLight.Parent = heart
+label(pedestal, "Altar do Coração da Floresta", rgb(183, 245, 201))
+
+-- Professora Luz, the guide
+local luz, luzHead = npc("Professora Luz", Vector3.new(8, 0, 10), { pants = rgb(60, 80, 60), shirt = rgb(233, 196, 106), skin = rgb(160, 103, 58), hat = rgb(190, 160, 110), label = rgb(255, 214, 102) }, math.rad(200))
+local talkPrompt = Instance.new("ProximityPrompt")
+talkPrompt.ActionText = "Conversar"
+talkPrompt.ObjectText = "Professora Luz"
+talkPrompt.MaxActivationDistance = 12
+talkPrompt.RequiresLineOfSight = false
+talkPrompt.Parent = luzHead
+
+-- ------------------------------------------------------------------ portals between chapters
+local CH = {
+	{ name = "Rio das Piranhas", origin = Vector3.new(400, 40, 0), color = rgb(72, 202, 228) },
+	{ name = "Copas das Árvores", origin = Vector3.new(800, 40, 0), color = rgb(82, 183, 136) },
+	{ name = "Caverna de Cristal", origin = Vector3.new(1200, 40, 0), color = rgb(199, 125, 255) },
+	{ name = "Fábrica do Dr. Fumaça", origin = Vector3.new(1600, 40, 0), color = rgb(255, 158, 0) },
+}
+local function portal(pos, text, color, onTouch)
+	local frame1 = part({ Size = Vector3.new(1.5, 12, 1.5), Position = pos + Vector3.new(-5, 6, 0), Color = rgb(120, 110, 100), Material = Enum.Material.Slate })
+	local frame2 = part({ Size = Vector3.new(1.5, 12, 1.5), Position = pos + Vector3.new(5, 6, 0), Color = rgb(120, 110, 100), Material = Enum.Material.Slate })
+	local top = part({ Size = Vector3.new(12, 1.5, 1.5), Position = pos + Vector3.new(0, 12.5, 0), Color = rgb(120, 110, 100), Material = Enum.Material.Slate })
+	local field = part({ Size = Vector3.new(8.5, 11, 0.6), Position = pos + Vector3.new(0, 6, 0), Color = color, Material = Enum.Material.ForceField, CanCollide = false, Transparency = 0.1 })
+	local bb = label(top, text, color)
+	bb.Size = UDim2.new(0, 260, 0, 60)
+	local debounce = {}
+	field.Touched:Connect(function(hit)
+		local plr = Players:GetPlayerFromCharacter(hit.Parent)
+		if not plr or debounce[plr] then return end
+		debounce[plr] = true
+		onTouch(plr, hit.Parent)
+		task.wait(1.5)
+		debounce[plr] = nil
+	end)
+	return field, frame1, frame2
+end
+local function teleport(char, cf)
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		char:PivotTo(cf)
+	end
+end
+-- four portals in the camp, each opens after the previous fragment
+for i, c in ipairs(CH) do
+	local a = math.rad(-60 + (i - 1) * 40)
+	local pos = Vector3.new(math.sin(a) * 34, 0, -math.cos(a) * 34 + 8)
+	portal(pos, i .. ". " .. c.name, c.color, function(plr, char)
+		local d = data[plr]
+		if not d then return end
+		if not d.talked then
+			Story:FireClient(plr, "needTalk")
+			return
+		end
+		if #d.frags < i - 1 then
+			Story:FireClient(plr, "locked", i)
+			return
+		end
+		local s = (math.floor(d.stage / 10) == i) and d.stage or i * 10
+		local cp = checkpoints[s]
+		teleport(char, cp and CFrame.new(cp.Position + Vector3.new(0, 4, 0)) or stageCF(i * 10))
+		Story:FireClient(plr, "chapter", i)
+		Zone:FireClient(plr, i)
+	end)
+end
+
+-- ================================================================== CHAPTER 1: Rio das Piranhas
+do
+	local o = CH[1].origin
+	checkpoint(10, o, true)
+	-- the river: deadly water full of piranhas
+	local water = killer(part({ Size = Vector3.new(260, 2, 60), Position = o + Vector3.new(120, -12, 0), Color = rgb(40, 130, 150), Material = Enum.Material.Glass, Transparency = 0.25 }))
+	local _ = water
+	for i = 1, 14 do
+		local fish = part({ Size = Vector3.new(1.6, 1, 0.6), Position = o + Vector3.new(10 + i * 16, -10.5, math.random(-20, 20)), Color = rgb(200, 60, 60), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		mover(fish, Vector3.new(0, 0, math.random(8, 16)), 1 + math.random())
+	end
+	-- banks with trees
+	for i = 1, 16 do
+		tree(o + Vector3.new(i * 16, -12, 34))
+		tree(o + Vector3.new(i * 16, -12, -34))
+	end
+	ground(o + Vector3.new(120, -13, 34), Vector3.new(270, 2, 10), rgb(86, 140, 60))
+	ground(o + Vector3.new(120, -13, -34), Vector3.new(270, 2, 10), rgb(86, 140, 60))
+	local x = 4
+	-- lily pads
+	for i = 1, 5 do
+		part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 7, 7), CFrame = CFrame.new(o + Vector3.new(x + i * 9, -1, (i % 2 == 0) and 4 or -4)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(80, 160, 70), Material = Enum.Material.Grass })
+	end
+	x = x + 54
+	checkpoint(11, o + Vector3.new(x, 0, 0))
+	-- floating logs that drift sideways
+	for i = 1, 4 do
+		local log = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(10, 3, 3), CFrame = CFrame.new(o + Vector3.new(x + 6 + i * 8, -1, -10)) * CFrame.Angles(0, math.rad(90), 0), Color = rgb(110, 75, 45), Material = Enum.Material.Wood })
+		mover(log, Vector3.new(0, 0, 20), 2.4 + i * 0.35)
+	end
+	x = x + 52
+	checkpoint(12, o + Vector3.new(x, 0, 0))
+	-- rotating bridge
+	local bridge = part({ Size = Vector3.new(26, 1.5, 5), Position = o + Vector3.new(x + 19, 0, 0), Color = rgb(140, 100, 60), Material = Enum.Material.WoodPlanks })
+	spinner(bridge, 0.6)
+	part({ Size = Vector3.new(2, 14, 2), Position = o + Vector3.new(x + 19, -7, 0), Color = rgb(90, 90, 90), Material = Enum.Material.Slate })
+	x = x + 40
+	part({ Size = Vector3.new(6, 1.5, 6), Position = o + Vector3.new(x + 1, 0, 0), Color = rgb(130, 130, 120), Material = Enum.Material.Slate })
+	-- stepping stones that sink
+	for i = 1, 5 do
+		vanishing(part({ Size = Vector3.new(5, 1.5, 5), Position = o + Vector3.new(x + i * 8, 0, (i % 2 == 0) and 3 or -3), Color = rgb(130, 130, 120), Material = Enum.Material.Slate }))
+	end
+	x = x + 50
+	checkpoint(13, o + Vector3.new(x, 0, 0))
+	-- the boto (river dolphin) watches over the fragment
+	npc("Boto Cor-de-Rosa", o + Vector3.new(x + 8, 0.5, 8), { pants = rgb(240, 150, 180), shirt = rgb(255, 255, 255), skin = rgb(245, 170, 200), hat = rgb(255, 255, 255), label = rgb(255, 170, 210) }, math.rad(-90))
+	fragment(1, o + Vector3.new(x + 4, 5, -6))
+end
+
+-- ================================================================== CHAPTER 2: Copas das Árvores
+do
+	local o = CH[2].origin
+	checkpoint(20, o, true)
+	part({ Size = Vector3.new(300, 2, 120), Position = o + Vector3.new(130, -60, 0), Color = rgb(60, 100, 45), Material = Enum.Material.Grass })
+	killer(part({ Size = Vector3.new(300, 1, 120), Position = o + Vector3.new(130, -40, 0), Transparency = 1, CanCollide = false }))
+	local x = 0
+	-- giant trunks with branch platforms
+	local function trunk(px, pz, top)
+		part({ Size = Vector3.new(6, 100, 6), Position = o + Vector3.new(px, top - 50, pz), Color = rgb(95, 68, 45), Material = Enum.Material.Wood })
+		part({ Shape = Enum.PartType.Ball, Size = Vector3.new(26, 18, 26), Position = o + Vector3.new(px, top + 16, pz), Color = rgb(60, 130, 55), Material = Enum.Material.Grass, CanCollide = false, Transparency = 0.1 })
+	end
+	for i = 1, 7 do
+		trunk(i * 34, (i % 2 == 0) and 12 or -12, 60)
+	end
+	-- branches
+	for i = 1, 6 do
+		part({ Size = Vector3.new(9, 1.4, 4), Position = o + Vector3.new(i * 8 + 4, i * 1.2, (i % 2 == 0) and 3 or -3), Color = rgb(110, 80, 50), Material = Enum.Material.Wood })
+	end
+	x = 56
+	checkpoint(21, o + Vector3.new(x, 8, 0))
+	-- rope bridge with gaps
+	for i = 1, 10 do
+		if i ~= 4 and i ~= 8 then
+			part({ Size = Vector3.new(2.6, 0.5, 5), Position = o + Vector3.new(x + 4 + i * 3, 8, 0), Color = rgb(160, 120, 70), Material = Enum.Material.WoodPlanks })
+		end
+	end
+	for _, z in ipairs({ -2.7, 2.7 }) do
+		part({ Size = Vector3.new(34, 0.3, 0.3), Position = o + Vector3.new(x + 20, 10, z), Color = rgb(200, 170, 120), Material = Enum.Material.Fabric })
+	end
+	x = x + 40
+	part({ Size = Vector3.new(8, 1, 8), Position = o + Vector3.new(x + 4, 8, 0), Color = rgb(110, 80, 50), Material = Enum.Material.Wood })
+	-- mushroom trampolines up to the canopy
+	for i = 1, 3 do
+		local m = bouncer(part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.5, 8, 8), CFrame = CFrame.new(o + Vector3.new(x + i * 12, 6 + i * 6, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(230, 57, 70), Material = Enum.Material.SmoothPlastic }), 95)
+		label(m, "PULA!", rgb(255, 240, 240)).StudsOffset = Vector3.new(0, 3, 0)
+	end
+	x = x + 48
+	checkpoint(22, o + Vector3.new(x, 26, 0))
+	-- falling leaves (vanishing platforms) high up
+	for i = 1, 8 do
+		vanishing(part({ Size = Vector3.new(6, 0.6, 6), Position = o + Vector3.new(x + 4 + i * 8, 26 + math.sin(i) * 2, (i % 2 == 0) and 5 or -5), Color = rgb(120, 190, 70), Material = Enum.Material.Grass }))
+	end
+	x = x + 76
+	part({ Size = Vector3.new(6, 1, 6), Position = o + Vector3.new(x + 2, 26, 0), Color = rgb(110, 80, 50), Material = Enum.Material.Wood })
+	-- swinging platforms
+	for i = 1, 3 do
+		local sw = part({ Size = Vector3.new(6, 1, 6), Position = o + Vector3.new(x + i * 10, 26, -8), Color = rgb(150, 110, 70), Material = Enum.Material.WoodPlanks })
+		mover(sw, Vector3.new(0, 0, 16), 2 + i * 0.4)
+	end
+	x = x + 42
+	checkpoint(23, o + Vector3.new(x, 26, 0))
+	npc("Arara Azul", o + Vector3.new(x + 8, 26.5, 8), { pants = rgb(255, 210, 63), shirt = rgb(30, 100, 200), skin = rgb(40, 120, 220), label = rgb(120, 180, 255) }, math.rad(-90))
+	fragment(2, o + Vector3.new(x + 4, 31, -6))
+end
+
+-- ================================================================== CHAPTER 3: Caverna de Cristal
+do
+	local o = CH[3].origin
+	checkpoint(30, o, true)
+	-- cave shell
+	part({ Size = Vector3.new(320, 2, 60), Position = o + Vector3.new(140, 40, 0), Color = rgb(50, 45, 60), Material = Enum.Material.Slate })
+	part({ Size = Vector3.new(320, 80, 2), Position = o + Vector3.new(140, 0, 30), Color = rgb(55, 50, 65), Material = Enum.Material.Slate })
+	part({ Size = Vector3.new(320, 80, 2), Position = o + Vector3.new(140, 0, -30), Color = rgb(55, 50, 65), Material = Enum.Material.Slate })
+	-- lava floor
+	local lava = killer(part({ Size = Vector3.new(320, 2, 60), Position = o + Vector3.new(140, -12, 0), Color = rgb(255, 90, 20), Material = Enum.Material.Neon }))
+	local lavaLight = Instance.new("PointLight")
+	lavaLight.Color = rgb(255, 120, 40)
+	lavaLight.Range = 40
+	lavaLight.Parent = lava
+	-- crystals on the walls
+	for i = 1, 40 do
+		local c = part({ Size = Vector3.new(1.5, 4 + math.random() * 5, 1.5), CFrame = CFrame.new(o + Vector3.new(math.random(5, 300), math.random(-8, 30), (math.random() < 0.5) and 28 or -28)) * CFrame.Angles(math.rad(math.random(-30, 30)), 0, math.rad(math.random(-30, 30))), Color = Color3.fromHSV(0.75 + math.random() * 0.12, 0.6, 1), Material = Enum.Material.Neon, CanCollide = false })
+		if i % 4 == 0 then
+			local l = Instance.new("PointLight")
+			l.Color = c.Color
+			l.Range = 16
+			l.Parent = c
+		end
+	end
+	local x = 0
+	for i = 1, 4 do
+		part({ Size = Vector3.new(6, 2, 6), Position = o + Vector3.new(i * 9, 0, 0), Color = rgb(100, 90, 120), Material = Enum.Material.Slate })
+	end
+	x = 44
+	checkpoint(31, o + Vector3.new(x, 0, 0))
+	-- spinning crystal bars over a platform walkway
+	for i = 1, 3 do
+		local base = x + i * 16
+		part({ Size = Vector3.new(16, 1.5, 12), Position = o + Vector3.new(base, 0, 0), Color = rgb(100, 90, 120), Material = Enum.Material.Slate })
+		local bar = killer(part({ Size = Vector3.new(14, 1.2, 1.2), Position = o + Vector3.new(base, 2, 0), Color = rgb(199, 125, 255), Material = Enum.Material.Neon }))
+		spinner(bar, 1.4 + i * 0.4)
+	end
+	x = x + 60
+	checkpoint(32, o + Vector3.new(x, 0, 0))
+	-- pistons that push across a narrow ledge
+	part({ Size = Vector3.new(60, 1.5, 5), Position = o + Vector3.new(x + 30, 0, 0), Color = rgb(100, 90, 120), Material = Enum.Material.Slate })
+	for i = 1, 4 do
+		local pst = part({ Size = Vector3.new(4, 4, 8), Position = o + Vector3.new(x + i * 12, 2.8, -10), Color = rgb(140, 130, 160), Material = Enum.Material.Metal })
+		mover(pst, Vector3.new(0, 0, 9), 0.9 + i * 0.25)
+	end
+	x = x + 64
+	checkpoint(33, o + Vector3.new(x, 0, 0))
+	-- moving crystal platforms over lava
+	for i = 1, 4 do
+		local pl = part({ Size = Vector3.new(6, 1, 6), Position = o + Vector3.new(x + 4 + i * 10, (i % 2) * 4, 0), Color = rgb(160, 110, 255), Material = Enum.Material.Glass, Transparency = 0.2 })
+		mover(pl, Vector3.new(0, 6, 0), 1.6 + i * 0.3)
+	end
+	x = x + 52
+	checkpoint(34, o + Vector3.new(x, 6, 0))
+	npc("Tatu-Bola", o + Vector3.new(x + 8, 6.5, 8), { pants = rgb(140, 110, 80), shirt = rgb(170, 140, 100), skin = rgb(190, 160, 120), label = rgb(230, 200, 150) }, math.rad(-90))
+	fragment(3, o + Vector3.new(x + 4, 11, -6))
+end
+
+-- ================================================================== CHAPTER 4: Fábrica do Dr. Fumaça + boss
+local bossButtons = {}
+local bossModel, bossHead
+local bossActive = false
+local bossBeaten = false
+do
+	local o = CH[4].origin
+	checkpoint(40, o, true)
+	part({ Size = Vector3.new(340, 2, 70), Position = o + Vector3.new(150, -14, 0), Color = rgb(60, 60, 60), Material = Enum.Material.DiamondPlate })
+	killer(part({ Size = Vector3.new(340, 2, 70), Position = o + Vector3.new(150, -12, 0), Color = rgb(70, 90, 40), Material = Enum.Material.Neon, Transparency = 0.25 })) -- toxic sludge
+	-- smokestacks
+	for i = 1, 6 do
+		local st = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(60, 8, 8), CFrame = CFrame.new(o + Vector3.new(i * 50, 20, 40)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(110, 100, 95), Material = Enum.Material.Brick })
+		local smoke = Instance.new("Smoke")
+		smoke.Color = rgb(80, 80, 80)
+		smoke.Size = 10
+		smoke.RiseVelocity = 8
+		smoke.Opacity = 0.4
+		local top = part({ Size = Vector3.new(1, 1, 1), Position = o + Vector3.new(i * 50, 52, 40), Transparency = 1, CanCollide = false })
+		smoke.Parent = top
+	end
+	local x = 0
+	part({ Size = Vector3.new(22, 1, 8), Position = o + Vector3.new(15, 0, 0), Color = rgb(70, 70, 75), Material = Enum.Material.DiamondPlate })
+	-- conveyors pushing back
+	for i = 1, 3 do
+		local cv = part({ Size = Vector3.new(20, 1, 8), Position = o + Vector3.new(14 + i * 22, 0, 0), Color = rgb(40, 40, 40), Material = Enum.Material.DiamondPlate })
+		cv.AssemblyLinearVelocity = Vector3.new(-14, 0, 0)
+		part({ Size = Vector3.new(2, 1, 8), Position = o + Vector3.new(25 + i * 22, 0, 0), Color = rgb(255, 200, 0), Material = Enum.Material.Metal })
+	end
+	x = 86
+	checkpoint(41, o + Vector3.new(x, 0, 0))
+	-- blinking lasers
+	part({ Size = Vector3.new(60, 1.5, 10), Position = o + Vector3.new(x + 30, 0, 0), Color = rgb(70, 70, 75), Material = Enum.Material.DiamondPlate })
+	local lasers = {}
+	for i = 1, 5 do
+		local lz = killer(part({ Size = Vector3.new(0.6, 6, 10), Position = o + Vector3.new(x + i * 10, 3.5, 0), Color = rgb(255, 40, 40), Material = Enum.Material.Neon, CanCollide = false }))
+		table.insert(lasers, lz)
+	end
+	task.spawn(function()
+		local on = true
+		while true do
+			for i, lz in ipairs(lasers) do
+				local active = (i % 2 == 0) == on
+				lz.Transparency = active and 0.1 or 0.92
+				lz:SetAttribute("Kill", active)
+				lz.CanTouch = active
+			end
+			on = not on
+			task.wait(1.6)
+		end
+	end)
+	x = x + 64
+	checkpoint(42, o + Vector3.new(x, 0, 0))
+	-- crushers
+	part({ Size = Vector3.new(60, 1.5, 10), Position = o + Vector3.new(x + 30, 0, 0), Color = rgb(70, 70, 75), Material = Enum.Material.DiamondPlate })
+	for i = 1, 4 do
+		local cr = killer(part({ Size = Vector3.new(7, 6, 10), Position = o + Vector3.new(x + i * 12, 14, 0), Color = rgb(255, 170, 0), Material = Enum.Material.Metal }))
+		mover(cr, Vector3.new(0, -10, 0), 0.8 + i * 0.2)
+	end
+	x = x + 64
+	checkpoint(43, o + Vector3.new(x, 0, 0))
+	-- boss arena
+	local ac = o + Vector3.new(x + 50, 0, 0)
+	part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(2, 80, 80), CFrame = CFrame.new(ac - Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(80, 80, 85), Material = Enum.Material.DiamondPlate })
+	part({ Size = Vector3.new(14, 1.5, 10), Position = o + Vector3.new(x + 12, 0, 0), Color = rgb(70, 70, 75), Material = Enum.Material.DiamondPlate })
+	-- Dr. Fumaça on his machine
+	local mach = part({ Size = Vector3.new(14, 10, 14), Position = ac + Vector3.new(0, 5, 0), Color = rgb(70, 70, 70), Material = Enum.Material.Metal })
+	local stack = part({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(8, 3, 3), CFrame = CFrame.new(ac + Vector3.new(4, 14, 4)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(90, 90, 90), Material = Enum.Material.Metal })
+	local smoke = Instance.new("Smoke")
+	smoke.Color = rgb(60, 60, 60)
+	smoke.Size = 6
+	smoke.Parent = stack
+	bossModel, bossHead = npc("Dr. Fumaça", ac + Vector3.new(0, 10, 0), { pants = rgb(40, 40, 40), shirt = rgb(220, 220, 220), skin = rgb(224, 172, 105), hat = rgb(30, 30, 30), label = rgb(255, 120, 120) }, math.rad(-90))
+	-- three big buttons around the arena
+	for i = 1, 3 do
+		local a = math.rad(i * 120 + 30)
+		local b = part({ Name = "Botao" .. i, Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.2, 7, 7), CFrame = CFrame.new(ac + Vector3.new(math.cos(a) * 28, 0.9, math.sin(a) * 28)) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(230, 57, 70), Material = Enum.Material.Neon })
+		label(b, "BOTÃO", rgb(255, 200, 200))
+		b:SetAttribute("On", false)
+		table.insert(bossButtons, b)
+	end
+	-- arena trigger
+	local trig = part({ Size = Vector3.new(70, 20, 70), Position = ac + Vector3.new(0, 8, 0), Transparency = 1, CanCollide = false })
+	trig.Touched:Connect(function(hit)
+		local plr = Players:GetPlayerFromCharacter(hit.Parent)
+		if plr and not bossActive and not bossBeaten then
+			bossActive = true
+			Story:FireAllClients("boss")
+		end
+	end)
+	CHAPTER_START[44] = CFrame.new(o + Vector3.new(x, 4, 0))
+	-- the boss throws smoke balls at players in the arena while active
+	task.spawn(function()
+		while true do
+			task.wait(1.4)
+			if bossActive and not bossBeaten then
+				for _, plr in ipairs(Players:GetPlayers()) do
+					local char = plr.Character
+					local root = char and char:FindFirstChild("HumanoidRootPart")
+					if root and (root.Position - ac).Magnitude < 45 then
+						local ball = Instance.new("Part")
+						ball.Shape = Enum.PartType.Ball
+						ball.Size = Vector3.new(4, 4, 4)
+						ball.Color = rgb(70, 70, 70)
+						ball.Material = Enum.Material.SmoothPlastic
+						ball.Transparency = 0.2
+						ball.CanCollide = false
+						ball.Anchored = true
+						ball.Position = ac + Vector3.new(0, 14, 0)
+						ball.Parent = map
+						local sm = Instance.new("Smoke")
+						sm.Color = rgb(50, 50, 50)
+						sm.Size = 3
+						sm.Parent = ball
+						local target = root.Position
+						local tw = TweenService:Create(ball, TweenInfo.new(1.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = target })
+						tw:Play()
+						tw.Completed:Connect(function()
+							for _, p2 in ipairs(Players:GetPlayers()) do
+								local r2 = p2.Character and p2.Character:FindFirstChild("HumanoidRootPart")
+								local h2 = p2.Character and p2.Character:FindFirstChildOfClass("Humanoid")
+								if r2 and h2 and (r2.Position - target).Magnitude < 6 then h2:TakeDamage(25) end
+							end
+							local ex = Instance.new("Explosion")
+							ex.BlastPressure = 0
+							ex.BlastRadius = 0
+							ex.DestroyJointRadiusPercent = 0
+							ex.Position = target
+							ex.Parent = workspace
+							ball:Destroy()
+						end)
+					end
+				end
+			end
+		end
+	end)
+	for _, b in ipairs(bossButtons) do
+		b.Touched:Connect(function(hit)
+			local plr = Players:GetPlayerFromCharacter(hit.Parent)
+			if not plr or not bossActive or b:GetAttribute("On") then return end
+			b:SetAttribute("On", true)
+			b.Color = rgb(82, 183, 136)
+			local n = 0
+			for _, bb in ipairs(bossButtons) do
+				if bb:GetAttribute("On") then n = n + 1 end
+			end
+			Story:FireAllClients("button", n)
+			if n == 3 then
+				bossBeaten = true
+				bossActive = false
+				local ex = Instance.new("Explosion")
+				ex.BlastPressure = 0
+				ex.DestroyJointRadiusPercent = 0
+				ex.Position = ac + Vector3.new(0, 8, 0)
+				ex.Parent = workspace
+				smoke.Enabled = false
+				for _, p in ipairs(bossModel:GetChildren()) do
+					if p:IsA("BasePart") then
+						p.Anchored = false
+						p.AssemblyLinearVelocity = Vector3.new(math.random(-30, 30), 50, math.random(-30, 30))
+					end
+				end
+				-- the fragment appears where the machine was
+				local f4 = fragment(4, ac + Vector3.new(0, 16, 0))
+				Story:FireAllClients("bossDown")
+				-- after a while the machine is rebuilt for the next explorers
+				task.delay(60, function()
+					if f4 then f4:Destroy() end
+					bossModel:Destroy()
+					bossModel, bossHead = npc("Dr. Fumaça", ac + Vector3.new(0, 10, 0), { pants = rgb(40, 40, 40), shirt = rgb(220, 220, 220), skin = rgb(224, 172, 105), hat = rgb(30, 30, 30), label = rgb(255, 120, 120) }, math.rad(-90))
+					for _, b2 in ipairs(bossButtons) do
+						b2:SetAttribute("On", false)
+						b2.Color = rgb(230, 57, 70)
+					end
+					smoke.Enabled = true
+					bossBeaten = false
+				end)
+			end
+		end)
+	end
+end
+
+-- ------------------------------------------------------------------ fragments + ending
+local function restoreHeart()
+	heart.Transparency = 0.05
+	heartLight.Brightness = 4
+	Lighting.ClockTime = 14
+	atmo.Color = rgb(210, 245, 220)
+	for i = 1, 25 do
+		local a = math.random() * math.pi * 2
+		local r = 16 + math.random() * 30
+		local pos = Vector3.new(math.cos(a) * r, 0, math.sin(a) * r - 10)
+		local fl = part({ Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 1.2), Position = pos + Vector3.new(0, 0.6, 0), Color = Color3.fromHSV(math.random(), 0.7, 1), Material = Enum.Material.Neon, CanCollide = false })
+	end
+end
+onFragment = function(plr, i)
+	local d = data[plr]
+	if not d then return end
+	for _, f in ipairs(d.frags) do
+		if f == i then return end
+	end
+	table.insert(d.frags, i)
+	local ls = plr:FindFirstChild("leaderstats")
+	if ls then ls.Fragmentos.Value = #d.frags end
+	saveData(plr)
+	Story:FireClient(plr, "fragment", i)
+	-- back to camp after a moment
+	task.delay(4, function()
+		if plr.Character then
+			teleport(plr.Character, CFrame.new(0, 4, 14))
+			Zone:FireClient(plr, 0)
+		end
+		if #d.frags >= 4 and not d.done then
+			d.done = true
+			saveData(plr)
+			restoreHeart()
+			Story:FireClient(plr, "ending")
+		end
+	end)
+end
+
+talkPrompt.Triggered:Connect(function(plr)
+	local d = data[plr]
+	if not d then return end
+	d.talked = true
+	Story:FireClient(plr, "talk", #d.frags)
+end)
+
+-- ------------------------------------------------------------------ players
+Players.PlayerAdded:Connect(function(plr)
+	local d = { stage = 0, frags = {}, talked = false, done = false }
+	if store then
+		local ok, saved = pcall(function() return store:GetAsync("p_" .. plr.UserId) end)
+		if ok and type(saved) == "table" then
+			d.stage = saved.stage or 0
+			d.frags = saved.frags or {}
+			d.done = saved.done or false
+			if #d.frags > 0 then d.talked = true end
+		end
+	end
+	data[plr] = d
+	local ls = Instance.new("Folder")
+	ls.Name = "leaderstats"
+	local fase = Instance.new("IntValue")
+	fase.Name = "Fase"
+	fase.Value = d.stage
+	fase.Parent = ls
+	local fr = Instance.new("IntValue")
+	fr.Name = "Fragmentos"
+	fr.Value = #d.frags
+	fr.Parent = ls
+	ls.Parent = plr
+	plr.CharacterAdded:Connect(function(char)
+		task.wait(0.2)
+		-- respawn at the last checkpoint of the chapter you are in
+		local s = d.stage
+		local chapter = math.floor(s / 10)
+		local cf = CHAPTER_START[0]
+		if chapter >= 1 and #d.frags < chapter then
+			local cp = checkpoints[s]
+			cf = cp and CFrame.new(cp.Position + Vector3.new(0, 4, 0)) or stageCF(chapter * 10)
+			Zone:FireClient(plr, chapter)
+		else
+			Zone:FireClient(plr, 0)
+		end
+		char:PivotTo(cf)
+	end)
+	task.wait(1)
+	Story:FireClient(plr, "intro", #d.frags, d.done)
+	if d.done then restoreHeart() end
+end)
+Players.PlayerRemoving:Connect(function(plr)
+	saveData(plr)
+	data[plr] = nil
+end)
+
+-- ------------------------------------------------------------------ animation loop
+RunService.Heartbeat:Connect(function(dt)
+	for _, s in ipairs(spinners) do
+		s.p.CFrame = s.p.CFrame * CFrame.Angles(0, s.speed * dt, 0)
+	end
+	if bossHead and bossActive then
+		bossHead.CFrame = bossHead.CFrame * CFrame.Angles(0, dt * 0.5, 0)
+	end
+end)
+]]></ProtectedString></Properties></Item>
+</Item>
+<Item class="StarterPlayer" referent="RBX00000000000000000000000000000008"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000000000000000000000000000007"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000000000000000000000000000006"><Properties><string name="Name">Historia</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — client: story dialogue (typewriter + sounds), objective,
+-- chapter banners and per-zone lighting/ambience.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
+
+local player = Players.LocalPlayer
+local Story = ReplicatedStorage:WaitForChild("Story")
+local Zone = ReplicatedStorage:WaitForChild("Zone")
+
+-- ------------------------------------------------------------------ sounds (built into every Roblox client)
+local function snd(id, vol, looped)
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = vol
+	s.Looped = looped or false
+	s.Parent = SoundService
+	return s
+end
+local sBlip = snd("rbxasset://sounds/electronicpingshort.wav", 0.15)
+local sPick = snd("rbxasset://sounds/action_get_up.mp3", 0.8)
+local sCheck = snd("rbxasset://sounds/button.wav", 0.6)
+local sBoom = snd("rbxasset://sounds/collide.wav", 0.9)
+local sSwim = snd("rbxasset://sounds/action_swim.mp3", 0.5)
+local sWind = snd("rbxasset://sounds/action_falling.mp3", 0.12, true)
+local sSplash = snd("rbxasset://sounds/impact_water.mp3", 0.5)
+
+-- ------------------------------------------------------------------ UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "Historia"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local function corner(o, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 12)
+	c.Parent = o
+end
+local function stroke(o, col, th)
+	local s = Instance.new("UIStroke")
+	s.Color = col
+	s.Thickness = th or 2
+	s.Parent = o
+end
+
+-- objective (top left)
+local obj = Instance.new("TextLabel")
+obj.Size = UDim2.new(0, 360, 0, 46)
+obj.Position = UDim2.new(0, 14, 0, 60)
+obj.BackgroundColor3 = Color3.fromRGB(12, 26, 18)
+obj.BackgroundTransparency = 0.25
+obj.TextColor3 = Color3.fromRGB(230, 255, 235)
+obj.Font = Enum.Font.GothamBold
+obj.TextSize = 15
+obj.TextWrapped = true
+obj.TextXAlignment = Enum.TextXAlignment.Left
+obj.Text = ""
+obj.Parent = gui
+corner(obj, 10)
+stroke(obj, Color3.fromRGB(82, 183, 136), 2)
+local pad = Instance.new("UIPadding")
+pad.PaddingLeft = UDim.new(0, 12)
+pad.PaddingRight = UDim.new(0, 12)
+pad.Parent = obj
+
+-- fragment counter (top right)
+local frags = Instance.new("TextLabel")
+frags.Size = UDim2.new(0, 170, 0, 40)
+frags.Position = UDim2.new(1, -184, 0, 60)
+frags.BackgroundColor3 = Color3.fromRGB(12, 26, 18)
+frags.BackgroundTransparency = 0.25
+frags.TextColor3 = Color3.fromRGB(183, 245, 201)
+frags.Font = Enum.Font.FredokaOne
+frags.TextSize = 20
+frags.Text = "💎 0 / 4"
+frags.Parent = gui
+corner(frags, 10)
+
+-- chapter banner
+local banner = Instance.new("TextLabel")
+banner.Size = UDim2.new(1, 0, 0, 90)
+banner.Position = UDim2.new(0, 0, 0.22, 0)
+banner.BackgroundTransparency = 1
+banner.TextColor3 = Color3.fromRGB(255, 214, 102)
+banner.TextStrokeTransparency = 0.2
+banner.Font = Enum.Font.FredokaOne
+banner.TextSize = 44
+banner.TextTransparency = 1
+banner.TextStrokeColor3 = Color3.new(0, 0, 0)
+banner.Text = ""
+banner.Parent = gui
+local function showBanner(t)
+	banner.Text = t
+	banner.TextTransparency = 0
+	banner.TextStrokeTransparency = 0.2
+	task.delay(3, function()
+		TweenService:Create(banner, TweenInfo.new(1), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	end)
+end
+
+-- dialogue box
+local box = Instance.new("Frame")
+box.Size = UDim2.new(0.9, 0, 0, 120)
+box.Position = UDim2.new(0.05, 0, 1, -140)
+box.BackgroundColor3 = Color3.fromRGB(10, 18, 14)
+box.BackgroundTransparency = 0.1
+box.Visible = false
+box.Parent = gui
+corner(box, 16)
+stroke(box, Color3.fromRGB(255, 214, 102), 2)
+local who = Instance.new("TextLabel")
+who.Size = UDim2.new(1, -24, 0, 26)
+who.Position = UDim2.new(0, 14, 0, 8)
+who.BackgroundTransparency = 1
+who.Font = Enum.Font.FredokaOne
+who.TextSize = 20
+who.TextXAlignment = Enum.TextXAlignment.Left
+who.Parent = box
+local say = Instance.new("TextLabel")
+say.Size = UDim2.new(1, -28, 1, -64)
+say.Position = UDim2.new(0, 14, 0, 36)
+say.BackgroundTransparency = 1
+say.Font = Enum.Font.Gotham
+say.TextSize = 17
+say.TextWrapped = true
+say.TextXAlignment = Enum.TextXAlignment.Left
+say.TextYAlignment = Enum.TextYAlignment.Top
+say.TextColor3 = Color3.new(1, 1, 1)
+say.Parent = box
+local hint = Instance.new("TextButton")
+hint.Size = UDim2.new(0, 160, 0, 26)
+hint.Position = UDim2.new(1, -172, 1, -32)
+hint.BackgroundTransparency = 1
+hint.Font = Enum.Font.GothamBold
+hint.TextSize = 14
+hint.TextColor3 = Color3.fromRGB(255, 214, 102)
+hint.Text = "Toque para continuar ▶"
+hint.Parent = box
+
+local COLORS = {
+	["Narrador"] = Color3.fromRGB(233, 196, 106),
+	["Professora Luz"] = Color3.fromRGB(255, 214, 102),
+	["Boto Cor-de-Rosa"] = Color3.fromRGB(255, 170, 210),
+	["Arara Azul"] = Color3.fromRGB(120, 180, 255),
+	["Tatu-Bola"] = Color3.fromRGB(230, 200, 150),
+	["Dr. Fumaça"] = Color3.fromRGB(255, 120, 120),
+	["Você"] = Color3.fromRGB(142, 202, 230),
+}
+
+local queue = {}
+local playing = false
+local advance = false
+hint.MouseButton1Click:Connect(function() advance = true end)
+box.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then advance = true end
+end)
+
+local function runQueue()
+	if playing then return end
+	playing = true
+	while #queue > 0 do
+		local line = table.remove(queue, 1)
+		box.Visible = true
+		who.Text = line[1]
+		who.TextColor3 = COLORS[line[1]] or Color3.new(1, 1, 1)
+		say.Text = ""
+		advance = false
+		local text = line[2]
+		-- typewriter with a soft blip, tap to finish the line
+		local n = 0
+		for _, cp in utf8.codes(text) do
+			n = n + 1
+			if advance then break end
+			say.Text = say.Text .. utf8.char(cp)
+			if n % 3 == 0 then sBlip:Play() end
+			task.wait(0.022)
+		end
+		say.Text = text
+		advance = false
+		local t0 = os.clock()
+		while not advance and os.clock() - t0 < 4 + #text * 0.03 do task.wait(0.05) end
+	end
+	box.Visible = false
+	playing = false
+end
+local function talk(lines)
+	for _, l in ipairs(lines) do table.insert(queue, l) end
+	task.spawn(runQueue)
+end
+
+-- ------------------------------------------------------------------ story text
+local OBJ = {
+	[0] = "Fale com a Professora Luz no acampamento",
+	[1] = "Entre no portal 1: Rio das Piranhas",
+	[2] = "Entre no portal 2: Copas das Árvores",
+	[3] = "Entre no portal 3: Caverna de Cristal",
+	[4] = "Entre no portal 4: Fábrica do Dr. Fumaça",
+	[5] = "O Coração da Floresta voltou a brilhar! 🌳",
+}
+local fragCount = 0
+local talked = false
+local function refreshObjective()
+	frags.Text = "💎 " .. fragCount .. " / 4"
+	if not talked and fragCount == 0 then
+		obj.Text = OBJ[0]
+	elseif fragCount >= 4 then
+		obj.Text = OBJ[5]
+	else
+		obj.Text = OBJ[fragCount + 1]
+	end
+end
+
+local CHAPTER_NAMES = { "Rio das Piranhas", "Copas das Árvores", "Caverna de Cristal", "Fábrica do Dr. Fumaça" }
+local CHAPTER_OBJ = {
+	"Atravesse o rio sem cair na água das piranhas",
+	"Suba pelas árvores até a copa mais alta",
+	"Atravesse a caverna sem tocar na lava",
+	"Invada a fábrica e derrote o Dr. Fumaça",
+}
+
+Story.OnClientEvent:Connect(function(kind, a, b)
+	if kind == "intro" then
+		fragCount = a or 0
+		talked = fragCount > 0
+		refreshObjective()
+		if fragCount == 0 then
+			showBanner("Coração da Floresta")
+			talk({
+				{ "Narrador", "No meio da Amazônia existe o Coração da Floresta, um cristal mágico que mantém a mata viva." },
+				{ "Narrador", "Mas o Dr. Fumaça roubou o cristal para alimentar a fábrica dele… e o Coração se partiu em 4 fragmentos." },
+				{ "Narrador", "Sem ele, a floresta está morrendo. Vá até a Professora Luz, no acampamento." },
+			})
+		elseif b then
+			showBanner("Bem-vindo de volta, Guardião!")
+		else
+			showBanner("Bem-vindo de volta!")
+		end
+	elseif kind == "talk" then
+		talked = true
+		refreshObjective()
+		if (a or 0) == 0 then
+			talk({
+				{ "Professora Luz", "Que bom que você chegou, explorador! O altar está vazio… o Coração da Floresta sumiu." },
+				{ "Professora Luz", "Os fragmentos caíram em quatro lugares: o Rio das Piranhas, as Copas das Árvores, a Caverna de Cristal e a fábrica do Dr. Fumaça." },
+				{ "Professora Luz", "Os portais de pedra levam até lá. Comece pelo rio. E cuidado: não caia na água!" },
+			})
+		elseif a < 4 then
+			talk({ { "Professora Luz", "Você já tem " .. a .. " fragmento(s)! O próximo portal já está aberto. Vai lá!" } })
+		else
+			talk({ { "Professora Luz", "Você salvou a floresta! Obrigada, Guardião. Volte sempre ao acampamento." } })
+		end
+	elseif kind == "needTalk" then
+		talk({ { "Você", "Melhor falar com a Professora Luz antes de entrar no portal." } })
+	elseif kind == "locked" then
+		talk({ { "Você", "Esse portal ainda está fechado. Preciso pegar o fragmento anterior primeiro." } })
+	elseif kind == "chapter" then
+		showBanner("Capítulo " .. a .. ": " .. CHAPTER_NAMES[a])
+		obj.Text = CHAPTER_OBJ[a]
+		if a == 1 then
+			sSplash:Play()
+			talk({ { "Narrador", "O rio está cheio de piranhas bravas. Pule de pedra em pedra e nos troncos que boiam." } })
+		elseif a == 2 then
+			talk({ { "Narrador", "As árvores gigantes guardam o segundo fragmento lá no alto. Os cogumelos vermelhos te jogam pra cima!" } })
+		elseif a == 3 then
+			talk({ { "Narrador", "A caverna é escura e o chão é de lava. Cuidado com os cristais que giram." } })
+		elseif a == 4 then
+			talk({
+				{ "Dr. Fumaça", "Hahaha! Um explorador na minha fábrica? Você nunca vai chegar até mim!" },
+				{ "Narrador", "Desvie das esteiras, dos lasers e das prensas. O último fragmento está com o Dr. Fumaça." },
+			})
+		end
+	elseif kind == "checkpoint" then
+		sCheck:Play()
+		showBanner("✔ Checkpoint")
+	elseif kind == "fragment" then
+		sPick:Play()
+		fragCount = fragCount + 1
+		refreshObjective()
+		showBanner("💎 Fragmento " .. a .. " recuperado!")
+		local who2 = ({ "Boto Cor-de-Rosa", "Arara Azul", "Tatu-Bola", "Narrador" })[a]
+		local thanks = ({
+			"Obrigado, amigo! Agora as águas do rio vão voltar a brilhar. Leve o fragmento de volta ao acampamento!",
+			"Craaá! Você é corajoso! O segundo fragmento é seu. Voe de volta… quer dizer, pegue o portal!",
+			"Eu me escondi aqui na caverna o tempo todo… Obrigado por salvar o terceiro fragmento!",
+			"O Dr. Fumaça fugiu e a fábrica parou! O último fragmento está com você!",
+		})[a]
+		talk({ { who2, thanks } })
+	elseif kind == "boss" then
+		sBoom:Play()
+		showBanner("CHEFE: DR. FUMAÇA")
+		obj.Text = "Pise nos 3 botões vermelhos e desvie das bolas de fumaça"
+		talk({
+			{ "Dr. Fumaça", "Chega de brincadeira! Minha máquina vai engolir a floresta inteira!" },
+			{ "Você", "Os botões vermelhos! Se eu apertar os três, a máquina desliga!" },
+		})
+	elseif kind == "button" then
+		sCheck:Play()
+		showBanner("Botão " .. a .. " / 3")
+	elseif kind == "bossDown" then
+		sBoom:Play()
+		showBanner("A MÁQUINA EXPLODIU!")
+		obj.Text = "Pegue o último fragmento"
+		talk({ { "Dr. Fumaça", "Nããão! Minha fábrica! Isso não vai ficar assim!" } })
+	elseif kind == "ending" then
+		showBanner("🌳 A FLORESTA FOI SALVA! 🌳")
+		talk({
+			{ "Professora Luz", "Os quatro fragmentos! Coloque-os no altar… olha só, o Coração da Floresta voltou a brilhar!" },
+			{ "Narrador", "As árvores voltaram a crescer, os rios ficaram limpos e os animais voltaram para casa." },
+			{ "Narrador", "E você virou o Guardião da Floresta. Fim… por enquanto!" },
+		})
+	end
+end)
+
+-- ------------------------------------------------------------------ per-zone lighting
+local base = {
+	ClockTime = Lighting.ClockTime,
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	FogEnd = Lighting.FogEnd,
+	FogColor = Lighting.FogColor,
+}
+Zone.OnClientEvent:Connect(function(z)
+	local goal
+	if z == 3 then
+		goal = { ClockTime = 0, Ambient = Color3.fromRGB(60, 40, 80), OutdoorAmbient = Color3.fromRGB(50, 30, 70), FogEnd = 260, FogColor = Color3.fromRGB(30, 15, 40) }
+		sWind:Play()
+	elseif z == 4 then
+		goal = { ClockTime = 17.6, Ambient = Color3.fromRGB(90, 80, 70), OutdoorAmbient = Color3.fromRGB(120, 100, 90), FogEnd = 400, FogColor = Color3.fromRGB(120, 110, 100) }
+		sWind:Stop()
+	elseif z == 1 then
+		goal = base
+		sSwim:Play()
+		sWind:Stop()
+	else
+		goal = base
+		sWind:Stop()
+	end
+	TweenService:Create(Lighting, TweenInfo.new(1.5), goal):Play()
+end)
+
+refreshObjective()
+]]></ProtectedString></Properties></Item>
+</Item>
+</Item>
+<Item class="StarterGui" referent="RBX00000000000000000000000000000009"><Properties><string name="Name">StarterGui</string></Properties></Item>
+<Item class="SoundService" referent="RBX0000000000000000000000000000000A"><Properties><string name="Name">SoundService</string></Properties></Item>
+</roblox>
