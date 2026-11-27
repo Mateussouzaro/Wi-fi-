@@ -13,7 +13,9 @@ import rbxm
 root = pathlib.Path(__file__).parent
 server = (root / "src/Server.lua").read_text()
 client = (root / "src/Client.lua").read_text()
-assert "]]>" not in server + client
+catalogo = (root / "src/Catalogo.lua").read_text()
+loja = (root / "src/Concessionaria.lua").read_text()
+assert "]]>" not in server + client + catalogo + loja
 ref = iter(f"RBX{i:032X}" for i in range(1, 1000))
 
 
@@ -30,6 +32,16 @@ def name_of(i):
     return v.decode("utf-8", "replace") if isinstance(v, bytes) else v
 
 
+def patch(inst, pairs):
+    """replace exact snippets in a script's Source (each must exist once)"""
+    src = inst.props["Source"][1]
+    src = src.decode("utf-8") if isinstance(src, bytes) else src
+    for old, new in pairs:
+        assert src.count(old) == 1, old
+        src = src.replace(old, new)
+    inst.props["Source"] = ("string", src)
+
+
 # ---- A-Chassis template
 a_roots, a_insts = rbxm.parse(str(root / "assets/A-Chassis_1.6.6.rbxm"))
 chassis = a_roots[0]
@@ -42,6 +54,37 @@ f_ref = rbxm.refmap_for(f_insts, "RBXF")
 pkg = {name_of(c): c for c in f_roots[0].children}
 
 
+def walk(i):
+    yield i
+    for c in i.children:
+        yield from walk(c)
+
+
+# garage menu: unowned cars show a lock, and the "denied" message points to the dealership
+for inst in walk(pkg["Place in StarterGui"]):
+    if inst.cls == "TextLabel" and name_of(inst) == "AccessDenied":
+        inst.props["Text"] = ("string", "🔒 Compre este carro na Solaris Motors")
+    if inst.cls == "LocalScript" and name_of(inst) == "SpawnerClient":
+        patch(inst, [
+            ("""	if isSelected == true then
+		StartCarButtonConnections()
+		return
+	end""", """	if isSelected == true then
+		local owned = game:GetService("Players").LocalPlayer:GetAttribute("Carros") or ""
+		for _, frame in pairs({ window.Grid, window.List }) do
+			for _, b in pairs(frame:GetChildren()) do
+				if b:IsA("GuiButton") and b:FindFirstChild("VehicleName") then
+					local has = string.find(owned, "|" .. b.Name .. "|", 1, true) ~= nil
+					b.VehicleName.Text = (has and "" or "🔒 ") .. b.Name
+				end
+			end
+		end
+		StartCarButtonConnections()
+		return
+	end"""),
+        ])
+
+
 def kids(folder, skip=()):
     return "".join(rbxm.to_xml(c, f_ref) for c in pkg[folder].children if name_of(c) not in skip)
 
@@ -50,14 +93,54 @@ def kids(folder, skip=()):
 spawner = [c for c in pkg["Place in ServerScriptService"].children if name_of(c) == "SpawnerServer"][0]
 spawner.props["Disabled"] = ("bool", True)
 spawner.props["Enabled"] = ("bool", False)
+
+
+# dealership integration: only cars the player owns can come out of the garage,
+# each spawned car is reported (to apply the saved paint), and the server can
+# take a car out for the player (DIRIGIR AGORA)
+patch(spawner, [
+    ("""	local categoryName = vehicleIds[carId]:GetAttribute("CarCategory")""",
+     """	if vehicleIds[carId] == nil then
+		return false, "Unknown vehicle"
+	end
+	local gate = ServerStorage:FindFirstChild("PodeSpawnar")
+	if gate and not gate:Invoke(plr, vehicleIds[carId].Name) then
+		return false, "Compre este carro na Solaris Motors"
+	end
+
+	local categoryName = vehicleIds[carId]:GetAttribute("CarCategory")"""),
+    ("""	table.insert(cars, 1, data)
+""", """	table.insert(cars, 1, data)
+	local hook = ServerStorage:FindFirstChild("CarroSpawnado")
+	if hook then
+		hook:Fire(plr, newCar)
+	end
+"""),
+    ("""	spawnRemote.OnServerInvoke = SpawnCar
+""", """	spawnRemote.OnServerInvoke = SpawnCar
+	local byName = Instance.new("BindableFunction")
+	byName.Name = "FortuneSpawn"
+	byName.OnInvoke = function(plr, carName)
+		for id, car in pairs(vehicleIds) do
+			if car.Name == carName then
+				return SpawnCar(plr, id)
+			end
+		end
+		return false, "Unknown vehicle"
+	end
+	byName.Parent = ServerStorage
+"""),
+])
 sss_fortune = rbxm.to_xml(spawner, f_ref)
 
 # our categories (the template module starting with "." is ignored by the spawner)
+# same categories as the dealership (src/Catalogo.lua); buying is checked per car by PodeSpawnar
 CATEGORIES = [
-    ("Rua", "Rua", 0, "ALL", ""),
-    ("Esportivos", "Esportivos", 1, "ALL", ""),
-    ("Super (800 créditos)", "Super", 2, "CUSTOM", "local ls = plr:FindFirstChild(\"leaderstats\")\n\t\treturn ls ~= nil and ls:FindFirstChild(\"Creditos\") ~= nil and ls.Creditos.Value >= 800"),
-    ("Motos", "Motos", 3, "ALL", ""),
+    ("Populares", "Populares", 0, "ALL", ""),
+    ("Sedãs", "Sedas", 1, "ALL", ""),
+    ("SUVs", "SUVs", 2, "ALL", ""),
+    ("Esportivos", "Esportivos", 3, "ALL", ""),
+    ("Luxo", "Luxo", 4, "ALL", ""),
 ]
 
 
@@ -89,13 +172,14 @@ for c in pkg["Place in ReplicatedStorage"].children:
         rs_children += item("Folder", "CarSpawnerCategories", children=inner)
     else:
         rs_children += rbxm.to_xml(c, f_ref)
+rs_children += item("ModuleScript", "Catalogo", f'<ProtectedString name="Source"><![CDATA[{catalogo}]]></ProtectedString>')
 
 xml = '<roblox version="4">'
 xml += item("Workspace", "Workspace", '<float name="Gravity">196.2</float>')
 xml += item("Lighting", "Lighting", '<token name="Technology">4</token>')
 xml += item("ReplicatedStorage", "ReplicatedStorage", children=rs_children)
 xml += item("ServerScriptService", "ServerScriptService", children=script("Script", "PortoSolaris", server) + sss_fortune)
-xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client)))
+xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja)))
 xml += item("StarterGui", "StarterGui", children=kids("Place in StarterGui"))
 cars_xml = (root / "assets/cars.xml").read_text(encoding="utf-8")
 xml += item("ServerStorage", "ServerStorage", children=item("Folder", "Vehicles", children=cars_xml))

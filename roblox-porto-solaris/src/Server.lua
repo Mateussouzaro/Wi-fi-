@@ -17,7 +17,8 @@ local function remote(name)
 	r.Parent = ReplicatedStorage
 	return r
 end
-local SpawnCar = remote("SpawnCar")
+-- (the FORTUNE spawner owns the name "SpawnCar"; this is the old block-car spawner)
+local SpawnCar = remote("SpawnCarBloco")
 local Notify = remote("Notify")
 local Progress = remote("Progress")
 
@@ -423,21 +424,35 @@ local PALETTE = { rgb(235, 235, 240), rgb(20, 20, 24), rgb(200, 30, 40), rgb(30,
 -- script and fitted with a clean A-Chassis 6C. Here they get their menu category,
 -- then the spawner is started.
 local ServerStorage = game:GetService("ServerStorage")
-local CATEGORY_BY_NAME = {
-	["Brava Hellstar"] = "Esportivos", ["Brava Charger Wide"] = "Esportivos", ["Mustero Mach"] = "Esportivos",
-	["Sora GT"] = "Esportivos", ["Kaiser Roadster"] = "Esportivos", ["Vulpes GT-S"] = "Esportivos",
-	["Toro SUV"] = "Super", ["Mistral W16"] = "Super", ["Cadenza V"] = "Super",
-	["Aurion B9"] = "Rua", ["Superbo"] = "Rua", ["Pontis G8"] = "Rua", ["Trackhawk SRT"] = "Rua",
-}
+-- the spawner menu groups the cars by the dealership categories; the paint parts of
+-- each car are tagged once here, before the spawner copies the cars for its menu
+local CatalogoV = require(ReplicatedStorage:WaitForChild("Catalogo"))
 local vehicles = ServerStorage:WaitForChild("Vehicles")
 for _, v in ipairs(vehicles:GetChildren()) do
-	v:SetAttribute("CarCategory", CATEGORY_BY_NAME[v.Name] or "Rua")
+	local info = CatalogoV.info(v.Name)
+	v:SetAttribute("CarCategory", info and info.categoria or "Populares")
+	local n = CatalogoV.marcarPintura(v)
+	if n == 0 then warn("[Porto Solaris] sem peças de pintura: " .. v.Name) end
 end
 local SHOWCASE = vehicles:GetChildren()
 -- parked copy of a real car for the meet lot and the showroom (no scripts, anchored)
-local function showcase(cf, index)
+-- extent of a model along a world axis (min, max)
+local function extentAlong(m, axis)
+	local lo, hi = math.huge, -math.huge
+	for _, p in ipairs(m:GetDescendants()) do
+		if p:IsA("BasePart") and p.Transparency < 0.95 then
+			local c = p.CFrame
+			local half = 0.5 * (math.abs(c.RightVector:Dot(axis)) * p.Size.X + math.abs(c.UpVector:Dot(axis)) * p.Size.Y + math.abs(c.LookVector:Dot(axis)) * p.Size.Z)
+			local d = p.Position:Dot(axis)
+			lo = math.min(lo, d - half)
+			hi = math.max(hi, d + half)
+		end
+	end
+	return lo, hi
+end
+local function showcase(cf, index, name)
 	if #SHOWCASE == 0 then return nil end
-	local src = SHOWCASE[((index or math.random(1, 1000)) - 1) % #SHOWCASE + 1]
+	local src = name and vehicles:FindFirstChild(name) or SHOWCASE[((index or math.random(1, 1000)) - 1) % #SHOWCASE + 1]
 	local m = src:Clone()
 	for _, d in ipairs(m:GetDescendants()) do
 		if d:IsA("LuaSourceContainer") or d:IsA("ProximityPrompt") or d:IsA("ClickDetector") or d:IsA("Sound") then
@@ -451,6 +466,12 @@ local function showcase(cf, index)
 	if seat then m.PrimaryPart = seat end
 	-- rest the car on its wheels: lowest wheel bottom goes to the height of cf
 	m:PivotTo(cf * CFrame.new(0, 0, 0) * (m:GetPivot() - m:GetPivot().Position))
+	-- turn the car so its length runs along the spot (cf's look direction)
+	local a1, a2 = extentAlong(m, cf.LookVector)
+	local b1, b2 = extentAlong(m, cf.RightVector)
+	if (b2 - b1) > (a2 - a1) then
+		m:PivotTo(CFrame.new(m:GetPivot().Position) * CFrame.Angles(0, math.rad(90), 0) * (m:GetPivot() - m:GetPivot().Position))
+	end
 	local low = nil
 	local wheels = m:FindFirstChild("Wheels")
 	if wheels then
@@ -600,51 +621,338 @@ do
 	for i = 1, 4 do palm(cx - 34, cz - 24 + i * 12) end
 end
 
--- ------------------------------------------------------------------ SHOWROOM "Solaris Motors"
+-- ------------------------------------------------------------------ CONCESSIONÁRIA "Solaris Motors"
+-- Glass dealership facing the cross avenue: plaza with outdoor cars, showroom with a
+-- hero turntable and 4 lit bays (real 3D cars), reception counter where the catalogue
+-- opens, lounge, and a closed inspection studio behind the back wall where each
+-- player's client shows the car chosen in the catalogue.
+local Catalogo = require(ReplicatedStorage:WaitForChild("Catalogo"))
 local turntables = {}
+local DEALER = { x1 = -310, x2 = -130, z1 = -84, z2 = 6, h = 24 }
+local STUDIO = V(-220, 0.9, 40) -- top centre of the studio turntable
+local EXIT = CFrame.new(V(-160, 3, -104)) * CFrame.Angles(0, math.rad(-90), 0) -- vehicle pick-up spot, facing +X
 do
-	local cx, cz = -180, -60
-	part({ Size = V(64, 0.4, 44), Position = V(cx, 0.2, cz), Color = rgb(235, 235, 238), Material = Enum.Material.Marble, Reflectance = 0.15 })
-	part({ Size = V(64, 1, 44), Position = V(cx, 16, cz), Color = rgb(40, 40, 44), Material = Enum.Material.Concrete })
-	part({ Size = V(64, 16, 1), Position = V(cx, 8, cz + 22), Color = rgb(60, 62, 68), Material = Enum.Material.Concrete })
-	part({ Size = V(1, 16, 44), Position = V(cx - 32, 8, cz), Color = rgb(60, 62, 68), Material = Enum.Material.Concrete })
-	part({ Size = V(1, 16, 44), Position = V(cx + 32, 8, cz), Color = rgb(60, 62, 68), Material = Enum.Material.Concrete })
-	-- glass front with a door gap in the middle
+	local X0 = -220
+	local white = rgb(236, 236, 238)
+	local steel = rgb(38, 40, 46)
+	local glassC = rgb(150, 190, 210)
+	-- plaza and driveway
+	part({ Size = V(230, 0.3, 37), Position = V(X0, 0.12, -102.5), Color = rgb(120, 122, 126), Material = Enum.Material.Concrete })
+	for i = 0, 10 do
+		part({ Size = V(0.4, 0.32, 14), Position = V(-322 + i * 9, 0.14, -108), Color = rgb(240, 240, 240), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+	end
+	-- floor: polished dark stone with thin grout lines
+	part({ Size = V(180, 0.4, 90), Position = V(X0, 0.2, -39), Color = rgb(52, 54, 58), Material = Enum.Material.Marble, Reflectance = 0.18 })
+	for x = DEALER.x1 + 10, DEALER.x2 - 10, 10 do
+		part({ Size = V(0.12, 0.02, 90), Position = V(x, 0.41, -39), Color = rgb(30, 31, 34), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false })
+	end
+	for z = DEALER.z1 + 10, DEALER.z2 - 10, 10 do
+		part({ Size = V(180, 0.02, 0.12), Position = V(X0, 0.41, z), Color = rgb(30, 31, 34), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false })
+	end
+	-- roof, fascia and front canopy with an LED edge
+	part({ Size = V(184, 1.5, 94), Position = V(X0, DEALER.h + 0.75, -39), Color = rgb(46, 48, 52), Material = Enum.Material.Concrete })
+	part({ Size = V(184, 4, 1), Position = V(X0, DEALER.h - 1.6, DEALER.z1 - 0.5), Color = steel, Material = Enum.Material.Metal })
+	part({ Size = V(120, 0.8, 12), Position = V(X0, 20.6, DEALER.z1 - 6), Color = rgb(30, 32, 36), Material = Enum.Material.Metal })
+	local edge = part({ Size = V(120, 0.3, 0.3), Position = V(X0, 20.2, DEALER.z1 - 11.9), Color = rgb(255, 210, 120), Material = Enum.Material.Neon })
+	local _ = edge
+	for _, x in ipairs({ -275, -165 }) do
+		part({ Size = V(1, 20.2, 1), Position = V(x, 10.1, DEALER.z1 - 11.5), Color = steel, Material = Enum.Material.Metal })
+	end
+	for i = -2, 2 do
+		local dl = part({ Size = V(2.4, 0.15, 2.4), Position = V(X0 + i * 22, 20.15, DEALER.z1 - 6), Color = rgb(255, 245, 225), Material = Enum.Material.Neon })
+		local l = light(dl, rgb(255, 236, 210), 24, 1.6, "SpotLight")
+		l.Face = Enum.NormalId.Bottom
+		l.Angle = 90
+		table.insert(nightLights, { l = l })
+	end
+	local fascia = part({ Size = V(70, 3.4, 0.4), CFrame = CFrame.new(X0, DEALER.h - 1.6, DEALER.z1 - 1.25), Color = rgb(15, 16, 20), Material = Enum.Material.SmoothPlastic })
+	sign(fascia, "SOLARIS MOTORS", rgb(120, 200, 255))
+	-- glass front (door gap in the middle), glass east side, mullions
+	local function glass(size, pos)
+		return part({ Size = size, Position = pos, Color = glassC, Material = Enum.Material.Glass, Transparency = 0.62, Reflectance = 0.12 })
+	end
+	for _, seg in ipairs({ { DEALER.x1, X0 - 8 }, { X0 + 8, DEALER.x2 } }) do
+		local w = seg[2] - seg[1]
+		glass(V(w, 20, 0.3), V(seg[1] + w / 2, 10.4, DEALER.z1))
+	end
+	glass(V(0.3, 20, 90), V(DEALER.x2, 10.4, -39))
+	for x = DEALER.x1, DEALER.x2, 12 do
+		part({ Size = V(0.7, 20.4, 0.7), Position = V(x, 10.6, DEALER.z1), Color = steel, Material = Enum.Material.Metal })
+	end
+	for z = DEALER.z1, DEALER.z2, 12 do
+		part({ Size = V(0.7, 20.4, 0.7), Position = V(DEALER.x2, 10.6, z), Color = steel, Material = Enum.Material.Metal })
+	end
+	part({ Size = V(180, 0.7, 0.7), Position = V(X0, 20.6, DEALER.z1), Color = steel, Material = Enum.Material.Metal })
+	part({ Size = V(0.7, 0.7, 90), Position = V(DEALER.x2, 20.6, -39), Color = steel, Material = Enum.Material.Metal })
+	-- automatic sliding doors (open as you approach, on every client)
 	for _, s in ipairs({ -1, 1 }) do
-		part({ Size = V(24, 14, 0.4), Position = V(cx + s * 19, 7, cz - 22), Color = rgb(160, 200, 220), Material = Enum.Material.Glass, Transparency = 0.55 })
+		local door = glass(V(8, 12, 0.25), V(X0 + s * 4, 6.4, DEALER.z1 - 0.4))
+		door.Name = "PortaAutomatica"
+		door:SetAttribute("Lado", s)
+		door.CanCollide = false
 	end
-	sign(part({ Size = V(30, 4, 0.5), CFrame = CFrame.new(cx, 18.5, cz - 22) * CFrame.Angles(0, math.rad(180), 0), Color = rgb(15, 15, 18), Material = Enum.Material.SmoothPlastic }), "SOLARIS MOTORS", rgb(120, 200, 255))
-	-- ceiling light panels
+	part({ Size = V(16.6, 0.8, 0.8), Position = V(X0, 12.8, DEALER.z1 - 0.4), Color = steel, Material = Enum.Material.Metal })
+	-- west and back walls (white, with a dark plinth)
+	part({ Size = V(1, DEALER.h, 90), Position = V(DEALER.x1, DEALER.h / 2, -39), Color = white, Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(180, DEALER.h, 1), Position = V(X0, DEALER.h / 2, DEALER.z2), Color = white, Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(0.3, 1, 90), Position = V(DEALER.x1 + 0.6, 0.9, -39), Color = steel, Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(180, 1, 0.3), Position = V(X0, 0.9, DEALER.z2 - 0.6), Color = steel, Material = Enum.Material.SmoothPlastic })
+	-- ceiling: linear LED strips and a big ring light above the hero turntable
+	for _, x in ipairs({ -290, -255, -185, -150 }) do
+		part({ Size = V(1.2, 0.25, 70), Position = V(x, DEALER.h - 0.15, -40), Color = rgb(255, 250, 240), Material = Enum.Material.Neon, CastShadow = false })
+	end
+	local function ring(cx, y, cz, r, col)
+		local n = 20
+		for i = 0, n - 1 do
+			local a = i / n * math.pi * 2
+			local seg = 2 * math.pi * r / n + 0.2
+			part({ Size = V(0.6, 0.6, seg), CFrame = CFrame.new(cx + math.cos(a) * r, y, cz + math.sin(a) * r) * CFrame.Angles(0, -a, 0), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false })
+		end
+		for i = 0, 2 do
+			local a = i / 3 * math.pi * 2
+			part({ Size = V(0.1, DEALER.h - y, 0.1), Position = V(cx + math.cos(a) * r, (DEALER.h + y) / 2, cz + math.sin(a) * r), Color = steel, Material = Enum.Material.Metal, CanCollide = false })
+		end
+	end
+	ring(X0, 17, -50, 13, rgb(255, 250, 240))
+	ring(X0, 18.5, -50, 8, rgb(255, 250, 240))
+	-- key lights for the cars (with shadows)
+	local function spot(pos, target, bright)
+		local fixture = part({ Shape = Enum.PartType.Cylinder, Size = V(1.4, 1.2, 1.2), CFrame = CFrame.lookAt(pos, target) * CFrame.Angles(0, math.rad(90), 0), Color = rgb(25, 25, 28), Material = Enum.Material.Metal, CanCollide = false })
+		local holder = part({ Size = V(0.5, 0.5, 0.5), CFrame = CFrame.lookAt(pos, target), Transparency = 1, CanCollide = false })
+		local l = light(holder, rgb(255, 246, 232), 48, bright or 4, "SpotLight")
+		l.Face = Enum.NormalId.Front
+		l.Angle = 55
+		l.Shadows = true
+		local _ = fixture
+	end
+	spot(V(X0 - 14, 21, -66), V(X0, 1, -50), 5)
+	spot(V(X0 + 14, 21, -34), V(X0, 1, -50), 5)
+	-- hero turntable (spun by each client) with a lit rim
+	part({ Shape = Enum.PartType.Cylinder, Size = V(0.6, 26, 26), CFrame = CFrame.new(X0, 0.7, -50) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(28, 29, 33), Material = Enum.Material.Metal, Reflectance = 0.25 })
+	part({ Shape = Enum.PartType.Cylinder, Size = V(0.12, 26.6, 26.6), CFrame = CFrame.new(X0, 0.48, -50) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(120, 200, 255), Material = Enum.Material.Neon, CastShadow = false })
+	local hero = showcase(CFrame.new(X0, 1.0, -50), nil, "Mistral W16")
+	if hero then
+		hero:SetAttribute("Giro", 0.25)
+		table.insert(turntables, hero)
+	end
+	-- four display bays: white platform with an LED edge, two spot lights and a price stand
+	local BAYS = { { -276, -62, "Brava Hellstar" }, { -276, -24, "Toro SUV" }, { -164, -62, "Sora GT" }, { -164, -24, "Cadenza V" } }
+	for _, b in ipairs(BAYS) do
+		local bx, bz, carName = b[1], b[2], b[3]
+		part({ Size = V(20, 0.5, 30), Position = V(bx, 0.65, bz), Color = rgb(242, 242, 244), Material = Enum.Material.SmoothPlastic, Reflectance = 0.05 })
+		for _, s in ipairs({ -1, 1 }) do
+			part({ Size = V(20.2, 0.12, 0.25), Position = V(bx, 0.62, bz + s * 15), Color = rgb(255, 60, 70), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+			part({ Size = V(0.25, 0.12, 30.2), Position = V(bx + s * 10, 0.62, bz), Color = rgb(255, 60, 70), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+		end
+		showcase(CFrame.new(bx, 0.9, bz), nil, carName)
+		spot(V(bx - 8, 21, bz - 12), V(bx, 1, bz), 3)
+		spot(V(bx + 8, 21, bz + 12), V(bx, 1, bz), 3)
+		local info = Catalogo.info(carName)
+		if info then
+			local side = bx < X0 and 1 or -1
+			local stand = part({ Size = V(0.4, 4, 3), CFrame = CFrame.new(bx + side * 12, 2.4, bz - 10), Color = rgb(20, 20, 24), Material = Enum.Material.SmoothPlastic })
+			part({ Size = V(1.6, 0.4, 1.6), Position = V(bx + side * 12, 0.6, bz - 10), Color = steel, Material = Enum.Material.Metal })
+			local sg = Instance.new("SurfaceGui")
+			sg.Face = side > 0 and Enum.NormalId.Right or Enum.NormalId.Left
+			sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+			sg.PixelsPerStud = 50
+			sg.LightInfluence = 0
+			sg.Parent = stand
+			local t = Instance.new("TextLabel")
+			t.Size = UDim2.new(1, -16, 1, -16)
+			t.Position = UDim2.new(0, 8, 0, 8)
+			t.BackgroundTransparency = 1
+			t.RichText = true
+			t.TextScaled = true
+			t.Font = Enum.Font.GothamBold
+			t.TextColor3 = rgb(255, 255, 255)
+			t.Text = string.format('<font color="#9fb0c0">%s</font>\n%s\n<font color="#5fe08a">%s</font>', info.marca, info.modelo, info.preco > 0 and ("💰 " .. Catalogo.formatar(info.preco)) or "GRÁTIS")
+			t.Parent = sg
+		end
+	end
+	-- reception counter with monitors, logo wall and the green "catalogue" area
+	local cz = -4
+	part({ Size = V(40, 3.6, 4), Position = V(X0, 2.2, cz), Color = rgb(245, 245, 247), Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(40.6, 0.4, 4.6), Position = V(X0, 4.2, cz), Color = rgb(150, 105, 70), Material = Enum.Material.WoodPlanks })
+	part({ Size = V(40.2, 0.2, 0.2), Position = V(X0, 0.7, cz - 2.05), Color = rgb(120, 200, 255), Material = Enum.Material.Neon, CastShadow = false })
 	for i = -1, 1 do
-		for j = -1, 1 do
-			local pnl = part({ Size = V(10, 0.2, 6), Position = V(cx + i * 18, 15.4, cz + j * 12), Color = rgb(255, 255, 255), Material = Enum.Material.Neon })
-			light(pnl, rgb(255, 250, 245), 26, 1.6)
-		end
+		local mon = part({ Size = V(3.2, 2, 0.2), CFrame = CFrame.new(X0 + i * 12, 5.6, cz + 0.6), Color = rgb(15, 15, 18), Material = Enum.Material.SmoothPlastic })
+		part({ Size = V(3, 1.8, 0.05), Position = V(X0 + i * 12, 5.6, cz + 0.48), Color = rgb(60, 130, 200), Material = Enum.Material.Neon, CastShadow = false })
+		part({ Size = V(0.3, 1, 0.3), Position = V(X0 + i * 12, 4.7, cz + 0.6), Color = steel, Material = Enum.Material.Metal })
+		local _ = mon
+		-- chairs behind the counter
+		part({ Size = V(2.2, 0.5, 2.2), Position = V(X0 + i * 12, 2.4, cz + 3.4), Color = rgb(30, 30, 34), Material = Enum.Material.Fabric })
+		part({ Size = V(2.2, 2.6, 0.4), Position = V(X0 + i * 12, 3.9, cz + 4.5), Color = rgb(30, 30, 34), Material = Enum.Material.Fabric })
+		part({ Size = V(0.4, 2.2, 0.4), Position = V(X0 + i * 12, 1.2, cz + 3.4), Color = steel, Material = Enum.Material.Metal })
 	end
-	-- display cars on turntables
-	local show = { "vortex", "aero", "nova", "luxo" }
-	for i, id in ipairs(show) do
-		local x = cx - 21 + (i - 1) * 14
-		local tt = part({ Shape = Enum.PartType.Cylinder, Size = V(0.6, 14, 14), CFrame = CFrame.new(x, 0.6, cz + 6) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(30, 30, 34), Material = Enum.Material.Metal, Reflectance = 0.2 })
-		local car = showcase(CFrame.new(x, 0.9, cz + 6), i * 3)
-		local ring = part({ Shape = Enum.PartType.Cylinder, Size = V(0.1, 14.4, 14.4), CFrame = CFrame.new(x, 0.32, cz + 6) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(120, 200, 255), Material = Enum.Material.Neon })
-		local _ = ring and tt
-		if car then
-			car:SetAttribute("Giro", 0.35 + i * 0.05)
-			table.insert(turntables, car)
-		end
-		local _ = id
-	end
-	-- garage counter NPC prompt
-	local desk = part({ Name = "Balcao", Size = V(8, 3, 3), Position = V(cx + 20, 1.7, cz - 10), Color = rgb(20, 20, 24), Material = Enum.Material.Marble })
+	local logoWall = part({ Size = V(60, 14, 0.6), CFrame = CFrame.new(X0, 9, DEALER.z2 - 0.8) * CFrame.Angles(0, math.rad(180), 0), Color = rgb(22, 24, 28), Material = Enum.Material.SmoothPlastic })
+	local lg = Instance.new("SurfaceGui")
+	lg.Face = Enum.NormalId.Front
+	lg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	lg.PixelsPerStud = 25
+	lg.LightInfluence = 0
+	lg.Parent = logoWall
+	local lt = Instance.new("TextLabel")
+	lt.Size = UDim2.new(1, 0, 0.62, 0)
+	lt.BackgroundTransparency = 1
+	lt.Text = "SOLARIS MOTORS"
+	lt.Font = Enum.Font.GothamBlack
+	lt.TextScaled = true
+	lt.TextColor3 = rgb(255, 255, 255)
+	lt.Parent = lg
+	local ls = lt:Clone()
+	ls.Size = UDim2.new(1, 0, 0.22, 0)
+	ls.Position = UDim2.new(0, 0, 0.66, 0)
+	ls.Font = Enum.Font.GothamBold
+	ls.Text = "CONCESSIONÁRIA OFICIAL • PORTO SOLARIS"
+	ls.TextColor3 = rgb(120, 200, 255)
+	ls.Parent = lg
+	part({ Size = V(62, 0.3, 0.3), Position = V(X0, 1.9, DEALER.z2 - 1.2), Color = rgb(120, 200, 255), Material = Enum.Material.Neon, CastShadow = false })
+	part({ Size = V(62, 0.3, 0.3), Position = V(X0, 16.1, DEALER.z2 - 1.2), Color = rgb(120, 200, 255), Material = Enum.Material.Neon, CastShadow = false })
+	local pad = part({ Name = "AreaCatalogo", Size = V(26, 0.12, 10), Position = V(X0, 0.47, -13), Color = rgb(40, 200, 90), Material = Enum.Material.Neon, Transparency = 0.45, CanCollide = false, CastShadow = false })
+	local padIn = part({ Size = V(24.4, 0.13, 8.4), Position = V(X0, 0.48, -13), Color = rgb(20, 90, 45), Material = Enum.Material.SmoothPlastic, Transparency = 0.2, CanCollide = false, CastShadow = false })
+	local _ = padIn
 	local pp = Instance.new("ProximityPrompt")
-	pp.ActionText = "Abrir garagem"
+	pp.Name = "AbrirCatalogo"
+	pp.ActionText = "Ver catálogo"
 	pp.ObjectText = "Solaris Motors"
-	pp.MaxActivationDistance = 12
+	pp.HoldDuration = 0
+	pp.MaxActivationDistance = 16
 	pp.RequiresLineOfSight = false
-	pp.Parent = desk
-	pp.Triggered:Connect(function(plr) Notify:FireClient(plr, "garage") end)
+	pp.Parent = pad
+	-- lounge: sofas, coffee table, plants and a promo screen
+	local function sofa(x, z, ry)
+		local base = CFrame.new(x, 0, z) * CFrame.Angles(0, ry, 0)
+		part({ Size = V(9, 1.4, 3.4), CFrame = base * CFrame.new(0, 1.1, 0), Color = rgb(60, 62, 68), Material = Enum.Material.Fabric })
+		part({ Size = V(9, 2.4, 0.8), CFrame = base * CFrame.new(0, 2.4, 1.3), Color = rgb(60, 62, 68), Material = Enum.Material.Fabric })
+		for _, s in ipairs({ -1, 1 }) do part({ Size = V(0.8, 2, 3.4), CFrame = base * CFrame.new(s * 4.1, 1.6, 0), Color = rgb(60, 62, 68), Material = Enum.Material.Fabric }) end
+	end
+	sofa(-294, -6, 0)
+	sofa(-303, -16, math.rad(90))
+	part({ Size = V(6, 0.3, 4), Position = V(-293, 1.6, -14), Color = rgb(150, 105, 70), Material = Enum.Material.WoodPlanks })
+	part({ Size = V(4, 1.3, 2.6), Position = V(-293, 0.85, -14), Color = rgb(30, 30, 34), Material = Enum.Material.Metal })
+	local function plant(x, z, s)
+		s = s or 1
+		part({ Shape = Enum.PartType.Cylinder, Size = V(2.4 * s, 2.6 * s, 2.6 * s), CFrame = CFrame.new(x, 1.6 * s, z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(235, 235, 235), Material = Enum.Material.SmoothPlastic })
+		for k = 1, 4 do
+			part({ Shape = Enum.PartType.Ball, Size = V(2.4 * s, 3 * s, 2.4 * s), Position = V(x + math.cos(k * 1.6) * 0.7 * s, (3 + k * 0.9) * s, z + math.sin(k * 1.6) * 0.7 * s), Color = Color3.fromHSV(0.3, 0.6, 0.35 + k * 0.03), Material = Enum.Material.Grass, CanCollide = false })
+		end
+	end
+	plant(-306, -2, 1.2)
+	plant(-306, -80, 1.2)
+	plant(-134, -80, 1.2)
+	plant(-134, 2, 1.2)
+	plant(X0 - 24, -4)
+	plant(X0 + 24, -4)
+	local tv = part({ Size = V(0.4, 7, 12), Position = V(DEALER.x1 + 0.8, 8, -30), Color = rgb(10, 10, 12), Material = Enum.Material.SmoothPlastic })
+	local tg = Instance.new("SurfaceGui")
+	tg.Face = Enum.NormalId.Right
+	tg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	tg.PixelsPerStud = 40
+	tg.LightInfluence = 0
+	tg.Parent = tv
+	local tt = Instance.new("TextLabel")
+	tt.Size = UDim2.new(1, -20, 1, -20)
+	tt.Position = UDim2.new(0, 10, 0, 10)
+	tt.BackgroundColor3 = rgb(20, 40, 70)
+	tt.TextScaled = true
+	tt.Font = Enum.Font.GothamBlack
+	tt.TextColor3 = rgb(255, 255, 255)
+	tt.Text = "OFERTA DA SEMANA\nSkovra Superbo e Pontis G8\nGRÁTIS na sua garagem!"
+	tt.Parent = tg
+	-- security cameras in the corners (red LED)
+	for _, c in ipairs({ { DEALER.x1 + 2, DEALER.z1 + 2 }, { DEALER.x2 - 2, DEALER.z1 + 2 }, { DEALER.x1 + 2, DEALER.z2 - 2 }, { DEALER.x2 - 2, DEALER.z2 - 2 } }) do
+		local p = V(c[1], DEALER.h - 1.2, c[2])
+		local cam = part({ Size = V(1, 0.8, 2), CFrame = CFrame.lookAt(p, V(X0, 2, -39)) * CFrame.Angles(math.rad(-20), 0, 0), Color = rgb(235, 235, 235), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+		part({ Size = V(0.25, 0.25, 0.1), CFrame = cam.CFrame * CFrame.new(0.3, 0.2, -1.02), Color = rgb(255, 30, 30), Material = Enum.Material.Neon, CanCollide = false })
+		part({ Size = V(0.3, 1.4, 0.3), Position = p + V(0, 0.9, 0), Color = rgb(235, 235, 235), Material = Enum.Material.SmoothPlastic, CanCollide = false })
+	end
+	-- outside: pylon with the brand, flags, planters, three cars on display and the pick-up spot
+	local pylon = part({ Size = V(5, 28, 2), Position = V(-118, 14, -116), Color = rgb(20, 22, 26), Material = Enum.Material.Metal })
+	local pg = Instance.new("SurfaceGui")
+	pg.Face = Enum.NormalId.Left
+	pg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	pg.PixelsPerStud = 20
+	pg.LightInfluence = 0
+	pg.Parent = pylon
+	local pt = Instance.new("TextLabel")
+	pt.Size = UDim2.new(1, 0, 1, 0)
+	pt.BackgroundTransparency = 1
+	pt.Text = "S\nO\nL\nA\nR\nI\nS"
+	pt.TextScaled = true
+	pt.Font = Enum.Font.GothamBlack
+	pt.TextColor3 = rgb(120, 200, 255)
+	pt.Parent = pg
+	local pg2 = pg:Clone()
+	pg2.Face = Enum.NormalId.Right
+	pg2.Parent = pylon
+	for i = 0, 3 do
+		local fx = -330 + i * 7
+		part({ Size = V(0.4, 18, 0.4), Position = V(fx, 9, -118), Color = rgb(220, 220, 220), Material = Enum.Material.Metal })
+		part({ Size = V(0.1, 4, 6), Position = V(fx, 15.5, -115), Color = ({ rgb(20, 60, 140), rgb(255, 200, 60), rgb(20, 60, 140), rgb(255, 255, 255) })[i + 1], Material = Enum.Material.Fabric, CanCollide = false })
+	end
+	for i, n in ipairs({ "Kaiser Roadster", "Trackhawk SRT", "Vulpes GT-S" }) do
+		showcase(CFrame.new(-318 + i * 9 + 18, 0.3, -104), nil, n)
+	end
+	local pick = part({ Size = V(12, 0.12, 12), Position = V(EXIT.Position.X, 0.33, EXIT.Position.Z), Color = rgb(255, 200, 60), Material = Enum.Material.Neon, Transparency = 0.5, CanCollide = false, CastShadow = false })
+	local _ = pick
+	sign(part({ Size = V(14, 3, 0.4), CFrame = CFrame.new(EXIT.Position.X, 7, -119), Color = rgb(20, 22, 26), Material = Enum.Material.SmoothPlastic }), "RETIRADA DE VEÍCULOS", rgb(255, 200, 60))
+	part({ Size = V(0.4, 6, 0.4), Position = V(EXIT.Position.X - 6, 3, -119), Color = steel, Material = Enum.Material.Metal })
+	part({ Size = V(0.4, 6, 0.4), Position = V(EXIT.Position.X + 6, 3, -119), Color = steel, Material = Enum.Material.Metal })
+
+	-- ---- inspection studio (closed room behind the back wall, seen only through the catalogue camera)
+	local S = { x1 = -270, x2 = -170, z1 = 7, z2 = 72, h = 26 }
+	local sc = V((S.x1 + S.x2) / 2, 0, (S.z1 + S.z2) / 2)
+	part({ Size = V(100, 0.4, 65), Position = V(sc.X, 0.2, sc.Z), Color = rgb(150, 105, 70), Material = Enum.Material.WoodPlanks, Reflectance = 0.08 })
+	part({ Size = V(100, S.h, 1), Position = V(sc.X, S.h / 2, S.z2), Color = rgb(225, 225, 228), Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(1, S.h, 65), Position = V(S.x1, S.h / 2, sc.Z), Color = rgb(225, 225, 228), Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(1, S.h, 65), Position = V(S.x2, S.h / 2, sc.Z), Color = rgb(225, 225, 228), Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(100, S.h, 1), Position = V(sc.X, S.h / 2, S.z1), Color = rgb(225, 225, 228), Material = Enum.Material.SmoothPlastic })
+	part({ Size = V(102, 1, 67), Position = V(sc.X, S.h + 0.5, sc.Z), Color = rgb(40, 42, 46), Material = Enum.Material.Concrete })
+	-- LED lines on the walls (low skirting light and vertical strips)
+	part({ Size = V(98, 0.25, 0.25), Position = V(sc.X, 0.9, S.z2 - 0.7), Color = rgb(255, 60, 70), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+	for _, x in ipairs({ S.x1 + 0.7, S.x2 - 0.7 }) do
+		part({ Size = V(0.25, 0.25, 63), Position = V(x, 0.9, sc.Z), Color = rgb(255, 60, 70), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+		for _, z in ipairs({ S.z1 + 12, S.z2 - 12 }) do
+			part({ Size = V(0.3, 18, 0.6), Position = V(x, 11, z), Color = rgb(255, 250, 240), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+		end
+	end
+	-- turntable, its light ring and the platform edge in red like the reference
+	part({ Shape = Enum.PartType.Cylinder, Size = V(0.5, 30, 30), CFrame = CFrame.new(STUDIO.X, 0.65, STUDIO.Z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(235, 235, 238), Material = Enum.Material.SmoothPlastic, Reflectance = 0.1 })
+	part({ Shape = Enum.PartType.Cylinder, Size = V(0.14, 30.8, 30.8), CFrame = CFrame.new(STUDIO.X, 0.5, STUDIO.Z) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(255, 40, 50), Material = Enum.Material.Neon, CastShadow = false })
+	-- softbox panels (area lights) and rim lights
+	for _, p in ipairs({ { STUDIO.X, STUDIO.Z, 24, 14 }, { STUDIO.X - 26, STUDIO.Z, 8, 30 }, { STUDIO.X + 26, STUDIO.Z, 8, 30 } }) do
+		local box = part({ Size = V(p[3], 0.3, p[4]), Position = V(p[1], S.h - 0.3, p[2]), Color = rgb(255, 255, 255), Material = Enum.Material.Neon, CastShadow = false })
+		local sl = Instance.new("SurfaceLight")
+		sl.Face = Enum.NormalId.Bottom
+		sl.Range = 40
+		sl.Brightness = 2.2
+		sl.Angle = 90
+		sl.Shadows = true
+		sl.Color = rgb(255, 250, 244)
+		sl.Parent = box
+	end
+	spot(V(STUDIO.X - 30, 14, STUDIO.Z - 24), V(STUDIO.X, 2, STUDIO.Z), 3)
+	spot(V(STUDIO.X + 30, 14, STUDIO.Z + 24), V(STUDIO.X, 2, STUDIO.Z), 2.5)
+	-- decoration: paint-chip wall, tyre rack and a perforated acoustic panel with the logo
+	local chips = { rgb(190, 20, 30), rgb(250, 200, 20), rgb(30, 140, 70), rgb(25, 70, 190), rgb(110, 40, 170), rgb(245, 110, 20), rgb(240, 240, 242), rgb(18, 18, 20) }
+	for r = 0, 3 do
+		for c = 0, 7 do
+			part({ Size = V(2.2, 2.2, 0.2), Position = V(S.x2 - 22 + c * 2.5, 6 + r * 2.5, S.z2 - 0.65), Color = chips[(c + r) % #chips + 1], Material = Enum.Material.SmoothPlastic, CastShadow = false })
+		end
+	end
+	for r = 0, 2 do
+		for c = 0, 3 do
+			part({ Shape = Enum.PartType.Cylinder, Size = V(1.4, 4.2, 4.2), CFrame = CFrame.new(S.x1 + 1.4, 3 + r * 4.6, S.z1 + 14 + c * 5), Color = rgb(22, 22, 22), Material = Enum.Material.SmoothPlastic })
+		end
+	end
+	local panel = part({ Size = V(30, 10, 0.3), CFrame = CFrame.new(S.x1 + 30, 12, S.z2 - 0.7) * CFrame.Angles(0, math.rad(180), 0), Color = rgb(30, 32, 36), Material = Enum.Material.Fabric })
+	sign(panel, "SOLARIS MOTORS • ESTÚDIO", rgb(255, 255, 255))
 end
+local estudioValue = Instance.new("CFrameValue")
+estudioValue.Name = "Estudio"
+estudioValue.Value = CFrame.new(STUDIO)
+estudioValue.Parent = ReplicatedStorage
 
 -- ------------------------------------------------------------------ DOWNTOWN towers (north) and houses
 do
@@ -1119,7 +1427,7 @@ end
 local PLACES = {
 	{ id = "meet", name = "Encontro Solaris", pos = V(105, 0, 0), r = 75 },
 	{ id = "posto", name = "Posto Aurora", pos = V(260, 0, -60), r = 35 },
-	{ id = "loja", name = "Solaris Motors", pos = V(-180, 0, -60), r = 35 },
+	{ id = "loja", name = "Solaris Motors", pos = V(-220, 0, -100), r = 45 },
 	{ id = "centro", name = "Centro", pos = V(0, 0, -390), r = 90 },
 	{ id = "praia", name = "Mirante do Píer", pos = V(0, 0, 500), r = 25 },
 	{ id = "sakura", name = "Distrito Sakura", pos = V(-300, 0, 180), r = 90 },
@@ -1183,9 +1491,10 @@ local function addCredits(plr, n, why)
 	save(plr)
 end
 
+local onDataLoaded = nil -- set by the dealership section
 local function onPlayerAdded(plr)
 	if data[plr] then return end
-	local d = { credits = 0, owned = {}, tutorial = false, found = {} }
+	local d = { credits = 0, owned = {}, tutorial = false, found = {}, cores = {} }
 	if store then
 		local ok, s = pcall(function() return store:GetAsync("p_" .. plr.UserId) end)
 		if ok and type(s) == "table" then
@@ -1193,6 +1502,7 @@ local function onPlayerAdded(plr)
 			d.owned = s.owned or {}
 			d.tutorial = s.tutorial or false
 			d.found = s.found or {}
+			d.cores = type(s.cores) == "table" and s.cores or {}
 			d.bestLap = s.bestLap
 			d.bestDrift = s.bestDrift
 		end
@@ -1207,6 +1517,7 @@ local function onPlayerAdded(plr)
 	c.Value = d.credits
 	c.Parent = ls
 	ls.Parent = plr
+	if onDataLoaded then onDataLoaded(plr) end
 	task.wait(1)
 	sendProgress(plr)
 end
@@ -1281,6 +1592,138 @@ Progress.OnServerEvent:Connect(function(plr, kind, value)
 			end
 		end
 	end
+end)
+
+-- ------------------------------------------------------------------ DEALERSHIP: purchases, saved paint, garage pick-up
+-- All money checks happen here (never on the client). The FORTUNE spawner (the garage
+-- in the top bar) asks PodeSpawnar before spawning and reports each spawned car to
+-- CarroSpawnado, so bought cars come out with the paint the player saved.
+local Loja = Instance.new("Folder")
+Loja.Name = "Loja"
+Loja.Parent = ReplicatedStorage
+local function lojaRemote(cls, name)
+	local r = Instance.new(cls)
+	r.Name = name
+	r.Parent = Loja
+	return r
+end
+local AbrirLoja = lojaRemote("RemoteEvent", "Abrir")
+local Comprar = lojaRemote("RemoteFunction", "Comprar")
+local SalvarCor = lojaRemote("RemoteFunction", "SalvarCor")
+local Dirigir = lojaRemote("RemoteFunction", "Dirigir")
+local PodeSpawnar = Instance.new("BindableFunction")
+PodeSpawnar.Name = "PodeSpawnar"
+PodeSpawnar.Parent = ServerStorage
+local CarroSpawnado = Instance.new("BindableEvent")
+CarroSpawnado.Name = "CarroSpawnado"
+CarroSpawnado.Parent = ServerStorage
+
+-- the client reads what the player owns from attributes: "|Superbo|Pontis G8|" and "Superbo=3;..."
+local function updateOwnedAttributes(plr)
+	local d = data[plr]
+	if not d then return end
+	local names, cores = {}, {}
+	for _, nome in ipairs(Catalogo.lista()) do
+		if Catalogo.podeUsar(d.owned, nome) then table.insert(names, nome) end
+	end
+	for nome, i in pairs(d.cores) do table.insert(cores, nome .. "=" .. tostring(i)) end
+	plr:SetAttribute("Carros", "|" .. table.concat(names, "|") .. "|")
+	plr:SetAttribute("Cores", table.concat(cores, ";"))
+end
+onDataLoaded = updateOwnedAttributes
+for _, plr in ipairs(Players:GetPlayers()) do updateOwnedAttributes(plr) end
+
+local busy = {}
+Comprar.OnServerInvoke = function(plr, nome, cor)
+	local d = data[plr]
+	if not d or type(nome) ~= "string" or busy[plr] then return false, "erro" end
+	busy[plr] = true
+	local ok, reason, price, missing = Catalogo.validarCompra(d.credits, d.owned, nome)
+	if not ok then
+		busy[plr] = nil
+		return false, reason, missing
+	end
+	d.credits = d.credits - price
+	d.owned[nome] = true
+	local ci = Catalogo.corValida(cor)
+	if ci then d.cores[nome] = ci end
+	local ls = plr:FindFirstChild("leaderstats")
+	if ls then ls.Creditos.Value = d.credits end
+	saveNow(plr)
+	sendProgress(plr)
+	updateOwnedAttributes(plr)
+	busy[plr] = nil
+	return true, "ok", d.credits
+end
+
+SalvarCor.OnServerInvoke = function(plr, nome, cor)
+	local d = data[plr]
+	local ci = Catalogo.corValida(cor)
+	if not d or type(nome) ~= "string" or not Catalogo.info(nome) or ci == nil then return false end
+	if not Catalogo.podeUsar(d.owned, nome) then return false end
+	d.cores[nome] = ci
+	save(plr)
+	updateOwnedAttributes(plr)
+	-- repaint the car the player has out right now, if it is this one
+	for _, m in ipairs(workspace:GetChildren()) do
+		if m:IsA("Model") and m.Name == nome and m:GetAttribute("Dono") == plr.UserId then Catalogo.pintar(m, ci) end
+	end
+	return true
+end
+
+PodeSpawnar.OnInvoke = function(plr, nome)
+	local d = data[plr]
+	if not d then return false end
+	return Catalogo.podeUsar(d.owned, nome)
+end
+
+local sitOnSpawn = {}
+CarroSpawnado.Event:Connect(function(plr, car)
+	if not (plr and car) then return end
+	car:SetAttribute("Dono", plr.UserId)
+	local d = data[plr]
+	local ci = d and d.cores[car.Name]
+	if ci and ci > 0 then Catalogo.pintar(car, ci) end
+	if sitOnSpawn[plr] == car.Name then
+		sitOnSpawn[plr] = nil
+		task.delay(0.8, function()
+			local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+			local seat = car:FindFirstChild("DriveSeat")
+			if hum and seat and seat:IsA("VehicleSeat") and car.Parent and not seat.Occupant then seat:Sit(hum) end
+		end)
+	end
+end)
+
+-- "DIRIGIR AGORA": take the car out at the pick-up spot in front of the dealership
+Dirigir.OnServerInvoke = function(plr, nome)
+	local d = data[plr]
+	if not d or type(nome) ~= "string" or not Catalogo.podeUsar(d.owned, nome) then return false, "nao_tem" end
+	local spawnFn = ServerStorage:FindFirstChild("FortuneSpawn")
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not spawnFn or not char or not hum or hum.Health <= 0 then return false, "erro" end
+	if hum.SeatPart then hum.Sit = false task.wait(0.2) end
+	char:PivotTo(EXIT)
+	task.wait(0.15)
+	sitOnSpawn[plr] = nome
+	local ok, res = spawnFn:Invoke(plr, nome)
+	if ok ~= true then
+		sitOnSpawn[plr] = nil
+		return false, res == "Spawner on cooldown" and "espera" or "erro"
+	end
+	return true
+end
+
+-- the green area at the counter opens the catalogue
+do
+	local prompt = map:FindFirstChild("AbrirCatalogo", true)
+	if prompt then
+		prompt.Triggered:Connect(function(plr) AbrirLoja:FireClient(plr) end)
+	end
+end
+Players.PlayerRemoving:Connect(function(plr)
+	busy[plr] = nil
+	sitOnSpawn[plr] = nil
 end)
 
 -- ------------------------------------------------------------------ RECORDS, DRIFT, RACE and MEET EVENTS

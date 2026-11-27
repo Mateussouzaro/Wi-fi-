@@ -248,7 +248,7 @@ def read_cframes(c, n):
 
 
 # ------------------------------------------------------------------ XML writer
-CONTENT_PROPS = {"Image", "SoundId", "Texture", "TextureId", "MeshId", "AnimationId", "ColorMap", "NormalMap", "RoughnessMap", "MetalnessMap",
+CONTENT_PROPS = {"Image", "SoundId", "Texture", "TextureId", "TextureID", "ShirtTemplate", "PantsTemplate", "MeshId", "AnimationId", "ColorMap", "NormalMap", "RoughnessMap", "MetalnessMap",
                  "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp", "SunTextureId", "MoonTextureId", "HoverImage", "PressedImage", "LinkedSource", "Graphic"}
 def esc(s):
     return sx.escape(s)

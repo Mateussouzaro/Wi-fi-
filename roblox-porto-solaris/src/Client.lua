@@ -10,7 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
-local SpawnCar = ReplicatedStorage:WaitForChild("SpawnCar")
+local SpawnCar = ReplicatedStorage:WaitForChild("SpawnCarBloco")
 local Notify = ReplicatedStorage:WaitForChild("Notify")
 local Progress = ReplicatedStorage:WaitForChild("Progress")
 local catalogueValue = ReplicatedStorage:WaitForChild("Catalogo")
@@ -340,7 +340,7 @@ local function openGarage()
 end
 gClose.MouseButton1Click:Connect(function() garage.Visible = false end)
 bGarage.MouseButton1Click:Connect(function()
-	toast("🚗 Toque no ícone de CARRO lá em cima para escolher seu carro")
+	toast("🚗 Ícone CARRO lá em cima = sua garagem • 🏪 Compre carros na Solaris Motors")
 end)
 spawnBtn.MouseButton1Click:Connect(function()
 	SpawnCar:FireServer(chosenCar.id, chosenColor, chosenLivery)
@@ -403,12 +403,23 @@ UserInputService.InputBegan:Connect(function(input)
 end)
 
 -- ------------------------------------------------------------------ help card
-local help = frame(gui, UDim2.new(0, 400, 0, 340), UDim2.new(0.5, -200, 0.5, -170), DARK, 0.05)
+local help = frame(gui, UDim2.new(0, 420, 0, 390), UDim2.new(0.5, -210, 0.5, -195), DARK, 0.05)
+do
+	-- shrink the card on short phone screens
+	local hs = Instance.new("UIScale")
+	hs.Parent = help
+	local function fitHelp()
+		local vs = camera.ViewportSize
+		hs.Scale = math.clamp(math.min((vs.Y - 20) / 390, (vs.X - 20) / 420), 0.5, 1)
+	end
+	camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitHelp)
+	fitHelp()
+end
 corner(help, 18)
 stroke(help, GOLD, 2)
 help.Visible = false
 text(help, "COMO JOGAR", UDim2.new(1, 0, 0, 34), UDim2.new(0, 0, 0, 10), Enum.Font.GothamBlack, 22, GOLD)
-text(help, "🚗  Toque no ícone de CARRO na barra de cima para escolher seu carro (Rua, Esportivos e Super).\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n🏁  CORRIDA: passe pela LARGADA na praia indo para a direita e siga a luz dourada.\n💨  DRIFT: derrape na Arena de Drift para somar pontos e combo.\n📢  ENCONTRO: a cada 8 min, leve o carro ao estacionamento e vote no mais bonito.\n💰  Descubra lugares do mapa para ganhar créditos.", UDim2.new(1, -30, 0, 250), UDim2.new(0, 15, 0, 48), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
+text(help, "🚗  Toque no ícone de CARRO na barra de cima para tirar seus carros da garagem.\n🏪  Compre carros novos e escolha a cor na concessionária SOLARIS MOTORS.\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n🏁  CORRIDA: passe pela LARGADA na praia indo para a direita e siga a luz dourada.\n💨  DRIFT: derrape na Arena de Drift para somar pontos e combo.\n📢  ENCONTRO: a cada 8 min, leve o carro ao estacionamento e vote no mais bonito.\n💰  Descubra lugares do mapa para ganhar créditos.", UDim2.new(1, -30, 0, 290), UDim2.new(0, 15, 0, 46), Enum.Font.GothamBold, 13, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
 local hClose = button(help, "ENTENDI", UDim2.new(0, 140, 0, 36), UDim2.new(0.5, -70, 1, -46), GOLD)
 hClose.TextColor3 = DARK
 hClose.MouseButton1Click:Connect(function() help.Visible = false end)
@@ -821,7 +832,7 @@ local SHOTS = {
 	{ from = CFrame.lookAt(Vector3.new(-20, 60, -90), Vector3.new(105, 0, 0)), to = CFrame.lookAt(Vector3.new(40, 40, -80), Vector3.new(110, 0, 0)), text = "Os encontros de carros mais bonitos da cidade" },
 	{ from = CFrame.lookAt(Vector3.new(60, 6, -20), Vector3.new(90, 2, 0)), to = CFrame.lookAt(Vector3.new(140, 6, -20), Vector3.new(160, 2, 0)), text = "Mostre seu carro no Encontro Solaris" },
 	{ from = CFrame.lookAt(Vector3.new(230, 10, -100), Vector3.new(260, 6, -60)), to = CFrame.lookAt(Vector3.new(290, 12, -100), Vector3.new(260, 6, -60)), text = "Passe no Posto Aurora" },
-	{ from = CFrame.lookAt(Vector3.new(-200, 8, -95), Vector3.new(-180, 3, -54)), to = CFrame.lookAt(Vector3.new(-160, 8, -95), Vector3.new(-180, 3, -54)), text = "Escolha seu carro na Solaris Motors" },
+	{ from = CFrame.lookAt(Vector3.new(-285, 12, -150), Vector3.new(-220, 8, -80)), to = CFrame.lookAt(Vector3.new(-160, 12, -150), Vector3.new(-220, 8, -80)), text = "Compre seu carro na concessionária Solaris Motors" },
 	{ from = CFrame.lookAt(Vector3.new(-80, 40, 380), Vector3.new(0, 2, 470)), to = CFrame.lookAt(Vector3.new(80, 30, 400), Vector3.new(0, 2, 470)), text = "E dirija livre até o pôr do sol na praia" },
 }
 local function runIntro()
