@@ -671,7 +671,10 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       dragShot(g);
       endMoment(3);
     }
+    let resolveAge = 0;
+    let kickoffWait = false;
     function endMoment(after = 2.2) {
+      resolveAge = 0;
       hud.choices(null);
       mState = "resolve";
       resolveT = after;
@@ -824,7 +827,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         hud.feedLine?.(90, "🏁 Fim de jogo!");
         return finish();
       }
-      if (schedule.length && minute >= schedule[0]) {
+      if (schedule.length && minute >= schedule[0] && !kickoffWait) {
         schedule.shift();
         const incoming = Math.random() < 0.4;
         hud.feedLine?.(minute, incoming ? `🔥 Lançamento para ${cfg.user.name}!` : `🔥 ${cfg.user.name} recebe na entrada da área!`);
@@ -905,7 +908,12 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         }
         if (mState === "resolve") {
           resolveT -= realDt;
-          if (resolveT <= 0 && pause <= 0.3) backToFeed();
+          resolveAge += realDt;
+          // the play is over (keeper/defence has it, ball dead, or a goal) → straight back to the scoreboard
+          const dead = (ball.owner && ball.owner.team !== userTeam) || (!ball.owner && ball.vel.length() < 2 && resolveAge > 0.8);
+          if (dead && resolveAge > 0.6) resolveT = Math.min(resolveT, 0.5);
+          if (pause > 0) resolveT = Math.min(resolveT, 1.4); // goal celebration / ball out
+          if (resolveT <= 0) backToFeed();
         }
         // slow motion while deciding
         dt *= mState === "skill" ? 0.18 : mState === "choose" ? 0.05 : mState === "aim" ? (firstTime ? 0.1 : 0.04) : mState === "incoming" ? 0.6 : 1;
@@ -1210,7 +1218,11 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           if (M) hud.feedLine?.(minute, scorer?.user ? `⚽ GOOOL de ${cfg.user.name}!!` : mine ? `⚽ GOL do ${teams[scoringTeam].name}!${ball.lastPasser?.user ? ` Assistência de ${cfg.user.name}!` : ""}` : `⚽ Gol do ${teams[scoringTeam].name}.`, true);
           pause = 2.8;
           kickoffTeam = 1 - scoringTeam;
-          setTimeout(() => kickoff(kickoffTeam), 2600);
+          kickoffWait = true;
+          setTimeout(() => {
+            kickoffWait = false;
+            if (!ended) kickoff(kickoffTeam);
+          }, 2600);
         } else {
           // goal kick or corner
           const defending = bx > 0 ? 1 : 0;
