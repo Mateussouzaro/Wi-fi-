@@ -23,6 +23,20 @@ export const SEA_Z = BEACH_ROAD + 82;
 export interface Box { minX: number; maxX: number; minZ: number; maxZ: number }
 export interface Circle { x: number; z: number; r: number }
 
+export const PIER = { x: 0, w: 4, z0: BEACH_ROAD + 40, z1: SEA_Z + 46, y: 1.2 };
+export const DOCK = new THREE.Vector3(PIER.x + 4.2, 0, PIER.z1 - 8);
+
+// Named neighbourhoods shown on screen when the player crosses into them.
+export function districtAt(x: number, z: number) {
+  if (z > SEA_Z - 12) return "Mar de Porto Sol";
+  if (x < X0 - 18) return "Morro do Farol";
+  if (x > -X0 + 18 && z > roadZ[2]) return "Pedra do Sol";
+  if (z > roadZ[NZ - 1]) return "Orla de Porto Sol";
+  if (z < Z0 - 10) return "Estrada Norte";
+  if (x > roadX[2] && x < roadX[4] && z < roadZ[3]) return "Centro Velho";
+  return "Vila Coral";
+}
+
 export interface World {
   colliders: Box[];
   circles: Circle[];
@@ -60,6 +74,7 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
   const circles: Circle[] = [];
   const landmarks: World["landmarks"] = [];
   const nightMats: THREE.MeshStandardMaterial[] = [];
+  const neonSet = new Set<THREE.MeshStandardMaterial>();
 
   // ---------------------------------------------------------------- sky + light
   const sky = new Sky();
@@ -168,6 +183,31 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
   // ---------------------------------------------------------------- blocks
   const signNames = ["PADARIA", "FARMÁCIA", "AÇAÍ", "BAR DO ZÉ", "LANCHONETE", "MERCADINHO", "BORRACHARIA", "SALÃO", "PASTELARIA", "LOTÉRICA"];
   const signCols = ["#C0392B", "#16A085", "#6C3483", "#D35400", "#2471A3", "#1E8449", "#7B241C", "#AF7AC5", "#B9770E", "#117A65"];
+  const NEON: [string, string][] = [["BOATE SOL", "#ff2bd6"], ["BAR DO PORTO", "#21e6ff"], ["AÇAÍ 24H", "#b14bff"], ["HOTEL CORAL", "#ff4d4d"], ["PIZZARIA", "#ffd23f"], ["CLUBE 77", "#39ff88"], ["CHURRASCO", "#ff8a3d"]];
+  const neonMats = NEON.map(([txt, col]) => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 128;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#0a0a10";
+    g.fillRect(0, 0, 512, 128);
+    g.font = "italic 900 74px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.shadowColor = col;
+    g.shadowBlur = 18;
+    g.strokeStyle = col;
+    g.lineWidth = 6;
+    g.strokeText(txt, 256, 66);
+    g.fillStyle = "#ffffff";
+    g.fillText(txt, 256, 66);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 0.2, roughness: 0.4 });
+    nightMats.push(m);
+    neonSet.add(m);
+    return m;
+  });
   const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, mat: THREE.Material) => {
     const g = boxUV(w, h, d, 21, 48);
     const m = new THREE.Mesh(g, [mat, mat, roofMat, roofMat, mat, mat]);
@@ -176,6 +216,15 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
     m.receiveShadow = true;
     scene.add(m);
     colliders.push({ minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 });
+    // nightlife: neon sign on the street side of some buildings
+    if (r() < 0.4) {
+      const k = Math.floor(r() * NEON.length);
+      const nm = neonMats[k];
+      const sgn = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w - 2, 9), 2.2), nm);
+      const atTop = r() < 0.5;
+      sgn.position.set(cx, atTop ? h - 2.5 : 5, cz + d / 2 + 0.06);
+      scene.add(sgn);
+    }
     // rooftop water tank / antenna
     if (r() < 0.6) {
       const t = new THREE.Mesh(new THREE.BoxGeometry(3, 2.4, 3), roofMat);
@@ -358,6 +407,14 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
   foam.position.set(0, 0.17, SEA_Z - 11);
   scene.add(foam);
 
+  const beamGroup = new THREE.Group();
+  {
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(14, 160, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff6c0, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    beam.rotation.z = Math.PI / 2;
+    beam.position.x = 80;
+    beamGroup.add(beam);
+    scene.add(beamGroup);
+  }
   // ---------------------------------------------------------------- favela hill (west)
   const hillCX = X0 - 120,
     hillCZ = -40,
@@ -412,7 +469,44 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
     scene.add(im);
   });
   circles.push({ x: hillCX, z: hillCZ, r: hillR * 0.82 });
-  landmarks.push({ name: "Morro", x: hillCX + 60, z: hillCZ });
+  landmarks.push({ name: "Morro do Farol", x: hillCX + 60, z: hillCZ });
+  {
+    // lighthouse on the summit
+    const fg = new THREE.Group();
+    for (let k = 0; k < 6; k++) {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(2.2 - k * 0.18, 2.4 - k * 0.18, 3, 20), new THREE.MeshStandardMaterial({ color: k % 2 ? 0xd62828 : 0xf8f8f8, roughness: 0.6 }));
+      band.position.y = 1.5 + k * 3;
+      band.castShadow = true;
+      fg.add(band);
+    }
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xfff2a8, emissiveIntensity: 0.3 });
+    nightMats.push(lampMat);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2, 16), lampMat);
+    lamp.position.y = 19;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(1.6, 1.6, 16), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    cap.position.y = 20.8;
+    fg.add(lamp, cap);
+    fg.position.set(hillCX, hillY(hillCX, hillCZ) - 0.5, hillCZ);
+    scene.add(fg);
+    beamGroup.position.set(hillCX, hillY(hillCX, hillCZ) + 18.5, hillCZ);
+  }
+
+  // ---------------------------------------------------------------- pier into the sea
+  {
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8b6a45, roughness: 0.9 });
+    const len = PIER.z1 - PIER.z0;
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(PIER.w, 0.3, len), wood);
+    deck.position.set(PIER.x, PIER.y - 0.15, (PIER.z0 + PIER.z1) / 2);
+    deck.castShadow = deck.receiveShadow = true;
+    scene.add(deck);
+    for (let z = PIER.z0 + 2; z < PIER.z1; z += 6)
+      for (const sx of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3, 8), wood);
+        post.position.set(PIER.x + sx * (PIER.w / 2 - 0.2), 0, z);
+        scene.add(post);
+      }
+    landmarks.push({ name: "Píer", x: PIER.x, z: PIER.z1 - 8 });
+  }
 
   // ---------------------------------------------------------------- granite morro (east, by the sea)
   const rockT = T.rock();
@@ -580,7 +674,8 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
   }
 
   // ---------------------------------------------------------------- time of day
-  const fog = new THREE.Fog(0x8899aa, 250, 1400);
+  const isNightNow = () => hour > 18.6 || hour < 5.6;
+  const fog = new THREE.Fog(0x8899aa, 420, 2200);
   scene.fog = fog;
   let hour = 17.6; // golden hour start
   let envTimer = 0;
@@ -600,14 +695,14 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
     (water.material as THREE.ShaderMaterial).uniforms.sunDirection.value.copy(sunDir).normalize();
     const day = THREE.MathUtils.clamp((elev + 4) / 14, 0, 1);
     const warm = 1 - THREE.MathUtils.clamp((elev - 2) / 25, 0, 1);
-    sun.intensity = 3.4 * day;
+    sun.intensity = 2.7 * day;
     sun.color.setRGB(1, 0.82 + 0.18 * (1 - warm), 0.62 + 0.38 * (1 - warm));
-    hemi.intensity = 0.25 + 0.75 * day;
+    hemi.intensity = 0.25 + 0.55 * day;
     hemi.color.setRGB(0.55 + 0.2 * day, 0.6 + 0.25 * day, 0.85 + 0.1 * day);
     const night = 1 - day;
-    for (const m of nightMats) m.emissiveIntensity = night * (m === lampHeadMat ? 3 : 0.75);
-    renderer.toneMappingExposure = 0.62 + 0.38 * day;
-    fog.color.setRGB(0.55 * day + 0.04, 0.6 * day + 0.05, 0.7 * day + 0.09);
+    for (const m of nightMats) m.emissiveIntensity = neonSet.has(m) ? 0.25 + night * 2.2 : night * (m === lampHeadMat ? 3 : 0.75);
+    renderer.toneMappingExposure = 0.62 + 0.26 * day;
+    fog.color.setRGB(0.42 * day + 0.04, 0.55 * day + 0.05, 0.72 * day + 0.09);
   };
   const refreshEnv = () => {
     if (envRT) envRT.dispose();
@@ -625,7 +720,7 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
     landmarks,
     minimapCanvas: mm,
     timeOfDay: () => hour,
-    isNight: () => hour > 18.6 || hour < 5.6,
+    isNight: isNightNow,
     setTimeOfDay: (h: number) => {
       hour = ((h % 24) + 24) % 24;
       applyTime();
@@ -633,6 +728,8 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer, qu
     },
     update: (dt, time, focus) => {
       (water.material as THREE.ShaderMaterial).uniforms.time.value = time * 0.6;
+      beamGroup.rotation.y = time * 0.8;
+      ((beamGroup.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = isNightNow() ? 0.12 : 0;
       // a full day takes 16 real minutes; nights pass a bit faster
       const night = hour > 19 || hour < 5;
       hour = (hour + (dt * 24) / (night ? 600 : 1080)) % 24;

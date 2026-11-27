@@ -3,7 +3,9 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { buildWorld, roadX, roadZ, NX, NZ, BEACH_ROAD, ROAD, World } from "./world";
+import { buildWorld, roadX, roadZ, NX, NZ, BEACH_ROAD, ROAD, World, PIER, DOCK, SEA_Z, districtAt } from "./world";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { Car, CarKind, CAR_COLORS, carVsCar } from "./car";
 import { Driver } from "./traffic";
 import { makeHuman, animateHuman, collideCircle, Pedestrian } from "./humans";
@@ -216,6 +218,16 @@ function endMission(ok: boolean) {
 }
 
 let hintT = 0;
+let lastDistrict = "";
+let areaT = 0;
+function areaCard(name: string) {
+  const el = $("area");
+  el.textContent = name;
+  el.classList.remove("on");
+  void el.offsetWidth;
+  el.classList.add("on");
+  areaT = 3.5;
+}
 function hint(t: string, secs = 0.2) {
   hud.hint.textContent = t;
   hud.hint.style.opacity = "1";
@@ -224,7 +236,7 @@ function hint(t: string, secs = 0.2) {
 
 // ---------------------------------------------------------------- spawning
 function spawnTraffic(n: number) {
-  const kinds: CarKind[] = ["sedan", "hatch", "hatch", "suv", "taxi", "sedan", "sport"];
+  const kinds: CarKind[] = ["sedan", "hatch", "moto", "hatch", "suv", "taxi", "sedan", "moto", "sport"];
   for (let k = 0; k < n; k++) {
     const car = new Car(kinds[k % kinds.length], CAR_COLORS[k % CAR_COLORS.length], scene);
     car.driver = "ai";
@@ -268,8 +280,17 @@ function enterOrExit() {
   if (player.car) {
     const c = player.car;
     if (Math.abs(c.speed) > 6) return;
-    const left = new THREE.Vector3(Math.cos(c.heading), 0, -Math.sin(c.heading));
-    player.pos.copy(c.pos).addScaledVector(left, 1.6).setY(0.25);
+    if (c.kind === "jetski") {
+      if (c.pos.distanceTo(DOCK) > 12) {
+        hint("Volte ao píer para descer do jet ski 🌊", 2.5);
+        return;
+      }
+      player.pos.set(PIER.x, PIER.y, c.pos.z);
+    } else {
+      const left = new THREE.Vector3(Math.cos(c.heading), 0, -Math.sin(c.heading));
+      player.pos.copy(c.pos).addScaledVector(left, 1.6).setY(0.25);
+    }
+    if (c.mesh.rider) c.mesh.rider.visible = false;
     collideCircle(player.pos, 0.4, world.colliders, world.circles);
     c.driver = null;
     player.car = null;
@@ -281,7 +302,7 @@ function enterOrExit() {
   let best: Car | null = null,
     bd = 4.2;
   for (const c of cars) {
-    const d = c.pos.distanceTo(player.pos);
+    const d = Math.hypot(c.pos.x - player.pos.x, c.pos.z - player.pos.z) + (c.kind === "jetski" ? -1.5 : 0);
     if (d < bd && c.kind !== "police") {
       bd = d;
       best = c;
@@ -297,10 +318,11 @@ function enterOrExit() {
     ped.scare(player.pos);
     drivers.delete(best);
     if (police.some((p) => p.car.pos.distanceTo(player.pos) < 60)) setWanted(Math.max(player.wanted, 1));
-    toast("Carro roubado 😬");
+    toast(best.kind === "moto" ? "Moto roubada 😬" : "Carro roubado 😬");
   }
   best.driver = "player";
   player.car = best;
+  if (best.mesh.rider) best.mesh.rider.visible = true;
   scene.remove(player.mesh.group);
   input.setCarMode(true);
   toast(`📻 ${audio.stations[audio.station]}`);
@@ -384,15 +406,36 @@ function drawMinimap(focus: THREE.Vector3, heading: number) {
   g.restore();
 }
 
+// Cinematic grade in display space: warm highlights, teal shadows, contrast, vignette.
+const GRADE = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      float l = dot(c, vec3(0.299,0.587,0.114));
+      c = mix(vec3(l), c, 1.14);                        // saturation
+      c = (c - 0.5) * 1.07 + 0.5;                       // contrast
+      c += mix(vec3(-0.012,0.006,0.03), vec3(0.035,0.012,-0.025), smoothstep(0.2,0.8,l)); // split tone
+      float v = smoothstep(0.95, 0.35, length(vUv - 0.5));
+      c *= mix(0.78, 1.0, v);                           // vignette
+      gl_FragColor = vec4(clamp(c,0.0,1.0), 1.0);
+    }`,
+};
+
 // ---------------------------------------------------------------- init
 function init() {
   world = buildWorld(scene, renderer, quality);
   if (quality === "alta") {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.6, 0.85);
+    bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.5, 0.92);
+    const ao = new GTAOPass(scene, camera, innerWidth / 2, innerHeight / 2);
+    ao.blendIntensity = 0.75;
+    composer.addPass(ao);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass(GRADE));
   }
   spawnTraffic(quality === "alta" ? 22 : 14);
   for (let k = 0; k < (quality === "alta" ? 26 : 12); k++) {
@@ -406,6 +449,17 @@ function init() {
   mine.heading = Math.PI / 2;
   mine.sync(0);
   cars.push(mine);
+  const bike = new Car("moto", 0x111111, scene);
+  bike.pos.set(roadX[2] + 4, 0, BEACH_ROAD - ROAD / 2 + 3.4);
+  bike.heading = Math.PI / 2;
+  if (bike.mesh.rider) bike.mesh.rider.visible = false;
+  bike.sync(0);
+  cars.push(bike);
+  const ski = new Car("jetski", 0xff2bd6, scene);
+  ski.pos.copy(DOCK);
+  ski.heading = 0;
+  ski.sync(0);
+  cars.push(ski);
   player.pos.set(roadX[2] + 12, 0.25, BEACH_ROAD - ROAD / 2 + 0.6);
   player.heading = Math.PI / 2;
   scene.add(player.mesh.group);
@@ -517,7 +571,12 @@ function step(dt: number) {
   if (player.car) {
     const c = player.car;
     const dead = c.health <= 0;
-    c.update(dt, { throttle: dead ? 0 : st.moveY, steer: -st.moveX, handbrake: st.handbrake }, world.colliders, world.circles);
+    const sea = c.kind === "jetski";
+    c.update(dt, { throttle: dead ? 0 : st.moveY, steer: -st.moveX, handbrake: st.handbrake }, sea ? [] : world.colliders, world.circles);
+    if (sea && c.pos.z < SEA_Z - 6) {
+      c.pos.z = SEA_Z - 6;
+      c.vel.z = Math.max(0, c.vel.z);
+    }
     if (c.lastImpact > 6) {
       audio.crash(c.lastImpact);
       shake = Math.min(0.6, c.lastImpact * 0.03);
@@ -539,8 +598,11 @@ function step(dt: number) {
     }
     collideCircle(player.pos, 0.4, world.colliders, world.circles);
     player.pos.x = THREE.MathUtils.clamp(player.pos.x, world.bounds.minX, world.bounds.maxX);
-    player.pos.z = THREE.MathUtils.clamp(player.pos.z, world.bounds.minZ, world.bounds.maxZ + 8);
-    player.pos.y = 0.25;
+    const pierLane = Math.abs(player.pos.x - PIER.x) < PIER.w / 2;
+    player.pos.z = THREE.MathUtils.clamp(player.pos.z, world.bounds.minZ, pierLane ? PIER.z1 - 0.5 : world.bounds.maxZ + 8);
+    const onPier = Math.abs(player.pos.x - PIER.x) < PIER.w / 2 && player.pos.z > PIER.z0 - 1;
+    if (onPier) player.pos.z = Math.min(player.pos.z, PIER.z1 - 0.5);
+    player.pos.y = onPier ? PIER.y : 0.25;
     player.phase += dt * (st.sprint ? 11 : 6.5) * amt;
     animateHuman(player.mesh, player.phase, amt * (st.sprint ? 2 : 1), time);
     player.mesh.group.position.copy(player.pos);
@@ -552,7 +614,7 @@ function step(dt: number) {
   const focus = player.car ? player.car.pos : player.pos;
   if (player.car) {
     player.car.pos.x = THREE.MathUtils.clamp(player.car.pos.x, world.bounds.minX, world.bounds.maxX);
-    if (player.car.pos.z > world.bounds.maxZ) {
+    if (player.car.kind !== "jetski" && player.car.pos.z > world.bounds.maxZ) {
       player.car.pos.z = world.bounds.maxZ;
       player.car.vel.z = Math.min(0, player.car.vel.z);
     }
@@ -574,7 +636,13 @@ function step(dt: number) {
     }
   }
   // parked / abandoned cars settle
-  for (const c of cars) if (!c.driver) c.update(dt, { throttle: 0, steer: 0, handbrake: true }, world.colliders, world.circles);
+  for (const c of cars) if (!c.driver) c.update(dt, { throttle: 0, steer: 0, handbrake: true }, c.kind === "jetski" ? [] : world.colliders, world.circles);
+  // district name card, like crossing into a new part of the map
+  const dname = districtAt(focus.x, focus.z);
+  if (dname !== lastDistrict) {
+    lastDistrict = dname;
+    areaCard(dname);
+  }
   // car-car collisions
   for (let a = 0; a < cars.length; a++)
     for (let b = a + 1; b < cars.length; b++) {
@@ -673,7 +741,7 @@ function step(dt: number) {
 
   // ---- world, camera, audio
   world.update(dt, time, focus);
-  if (bloom) bloom.strength = world.isNight() ? 0.5 : 0.25;
+  if (bloom) bloom.strength = world.isNight() ? 0.55 : 0.04;
   updateCamera(dt);
   if (shake > 0) {
     camera.position.x += (Math.random() - 0.5) * shake;
@@ -711,6 +779,8 @@ function step(dt: number) {
   toastT -= dt;
   if (toastT <= 0) hud.toast.style.opacity = "0";
   hintT -= dt;
+  areaT -= dt;
+  if (areaT <= 0) $("area").classList.remove("on");
   if (hintT <= 0) hud.hint.style.opacity = "0";
   drawMinimap(focus, player.car ? player.car.heading : camYaw);
 

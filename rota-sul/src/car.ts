@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import type { Box, Circle } from "./world";
 import { sign } from "./textures";
+import { makeHuman } from "./humans";
 
-export type CarKind = "sedan" | "hatch" | "suv" | "taxi" | "police" | "sport";
+export type CarKind = "sedan" | "hatch" | "suv" | "taxi" | "police" | "sport" | "moto" | "jetski";
 
 interface Spec {
   len: number; width: number; wheelR: number; wzf: number; wzr: number;
@@ -181,7 +182,116 @@ function makeWheel(r: number, side: number) {
   return spin;
 }
 
+// Rider sitting astride a bike or jet ski, helmet in the vehicle colour.
+function seatedRider(paint: THREE.Material) {
+  const rider = makeHuman(Math.floor(Math.random() * 1000), { female: false });
+  rider.group.scale.setScalar(0.95);
+  rider.hips.position.y = 0.82;
+  rider.torso.rotation.x = 0.45;
+  for (const leg of [rider.lLeg, rider.rLeg]) leg.rotation.x = -1.2;
+  rider.lShin.rotation.x = rider.rShin.rotation.x = 1.45;
+  rider.lLeg.rotation.z = -0.25;
+  rider.rLeg.rotation.z = 0.25;
+  for (const arm of [rider.lArm, rider.rArm]) arm.rotation.x = -1.0;
+  rider.lFore.rotation.x = rider.rFore.rotation.x = -0.35;
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), paint);
+  helmet.position.y = 0.73;
+  helmet.scale.set(1, 1.05, 1.12);
+  rider.torso.add(helmet);
+  return rider;
+}
+
+// Motorcycle with a rider; wheels[0] is the steering front wheel.
+function makeMoto(color: number) {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: 0.6, roughness: 0.3, clearcoat: 1 });
+  const R = 0.31;
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.1), trimMat);
+  frame.position.set(0, 0.55, 0);
+  frame.rotation.x = 0.12;
+  const tank = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.35, 4, 12), paint);
+  tank.rotation.x = Math.PI / 2 + 0.15;
+  tank.scale.set(1, 1, 0.75);
+  tank.position.set(0, 0.82, 0.2);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.6), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 }));
+  seat.position.set(0, 0.86, -0.32);
+  const engine = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.36), chromeMat);
+  engine.position.set(0, 0.45, 0.05);
+  const tailM = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.35), paint);
+  tailM.position.set(0, 0.88, -0.72);
+  tailM.rotation.x = -0.25;
+  const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75, 8), chromeMat);
+  fork.position.set(0, 0.62, 0.78);
+  fork.rotation.x = -0.4;
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 8), trimMat);
+  bar.rotation.z = Math.PI / 2;
+  bar.position.set(0, 1.02, 0.62);
+  const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.6, 10), chromeMat);
+  ex.rotation.x = Math.PI / 2;
+  ex.position.set(0.17, 0.42, -0.45);
+  const head = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3d6, emissiveIntensity: 0.6 });
+  const tail = new THREE.MeshStandardMaterial({ color: 0x5a0000, emissive: 0xff1a1a, emissiveIntensity: 0.5 });
+  const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 14), head);
+  hl.rotation.x = Math.PI / 2;
+  hl.position.set(0, 0.95, 0.86);
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.03), tail);
+  tl.position.set(0, 0.9, -0.9);
+  body.add(frame, tank, seat, engine, tailM, fork, bar, ex, hl, tl);
+  const rider = seatedRider(paint);
+  rider.group.position.set(0, 0.1, -0.28);
+  body.add(rider.group);
+  const wheels: THREE.Group[] = [];
+  for (const z of [0.82, -0.66]) {
+    const w = new THREE.Group();
+    const wh = makeWheel(R, 1);
+    wh.scale.set(0.55, 1, 1);
+    w.add(wh);
+    w.position.set(0, R, z);
+    g.add(w);
+    wheels.push(w);
+  }
+  body.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+  return { group: g, body, wheels, prof: { len: 2.1, width: 0.7, wheelR: R }, head, tail, siren: [] as THREE.MeshStandardMaterial[], paint, rider: rider.group };
+}
+
+// Jet ski for the sea.
+function makeJetski(color: number) {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: 0.3, roughness: 0.25, clearcoat: 1 });
+  const white = new THREE.MeshPhysicalMaterial({ color: 0xf4f4f4, roughness: 0.3, clearcoat: 1 });
+  const hullS = new THREE.Shape();
+  hullS.moveTo(-1.4, 0.1);
+  hullS.lineTo(1.1, 0.1);
+  hullS.quadraticCurveTo(1.6, 0.2, 1.65, 0.55);
+  hullS.lineTo(-1.45, 0.55);
+  hullS.closePath();
+  const hull = new THREE.Mesh(extrudeShape(hullS, 0.85, 0.12), white);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 1.6), paint);
+  deck.position.set(0, 0.72, 0.15);
+  const seat = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.8, 4, 10), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+  seat.rotation.x = Math.PI / 2;
+  seat.position.set(0, 0.88, -0.35);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 8), trimMat);
+  bar.rotation.z = Math.PI / 2;
+  bar.position.set(0, 1.12, 0.55);
+  body.add(hull, deck, seat, bar);
+  body.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+  const head = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.4 });
+  const tail = new THREE.MeshStandardMaterial({ color: 0x5a0000, emissive: 0xff1a1a, emissiveIntensity: 0.4 });
+  const rider = seatedRider(paint);
+  rider.group.position.set(0, 0.25, -0.35);
+  rider.group.visible = false;
+  body.add(rider.group);
+  return { group: g, body, wheels: [] as THREE.Group[], prof: { len: 3.0, width: 1.0, wheelR: 0.3 }, head, tail, siren: [] as THREE.MeshStandardMaterial[], paint, rider: rider.group as THREE.Group | null };
+}
+
 export function makeCarMesh(kind: CarKind, color: number) {
+  if (kind === "moto") return makeMoto(color);
+  if (kind === "jetski") return makeJetski(color);
   const sp = SPECS[kind === "taxi" || kind === "police" ? "sedan" : kind];
   const seed = carSeed++;
   const g = new THREE.Group();
@@ -339,7 +449,7 @@ export function makeCarMesh(kind: CarKind, color: number) {
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.03;
   g.add(shadow);
-  return { group: g, body, wheels, prof: { len: sp.len, width: W, wheelR: sp.wheelR }, head, tail, siren, paint };
+  return { group: g, body, wheels, prof: { len: sp.len, width: W, wheelR: sp.wheelR }, head, tail, siren, paint, rider: null as THREE.Group | null };
 }
 
 export interface CarInput { throttle: number; steer: number; handbrake: boolean }
@@ -369,8 +479,8 @@ export class Car {
     this.mesh = makeCarMesh(kind, color);
     scene.add(this.mesh.group);
     this.radius = this.mesh.prof.len / 2 - 0.4;
-    this.maxSpeed = kind === "sport" ? 58 : kind === "police" ? 50 : kind === "suv" ? 40 : 44;
-    this.accel = kind === "sport" ? 16 : kind === "police" ? 14 : 11;
+    this.maxSpeed = kind === "sport" ? 58 : kind === "moto" ? 54 : kind === "jetski" ? 30 : kind === "police" ? 50 : kind === "suv" ? 40 : 44;
+    this.accel = kind === "sport" ? 16 : kind === "moto" ? 15 : kind === "jetski" ? 9 : kind === "police" ? 14 : 11;
   }
 
   get forward() {
@@ -422,11 +532,20 @@ export class Car {
     const m = this.mesh;
     m.group.position.copy(this.pos);
     m.group.rotation.y = this.heading;
-    m.body.rotation.set(this.pitch, 0, THREE.MathUtils.clamp(this.roll, -0.08, 0.08));
+    if (this.kind === "moto") {
+      // bikes lean into the turn (the whole bike, wheels included)
+      const lean = THREE.MathUtils.clamp(-this.steer * Math.min(1, Math.abs(vf) / 12) * 0.9, -0.6, 0.6);
+      m.group.rotation.z = lean;
+      m.body.rotation.set(this.pitch * 2, 0, 0);
+    } else if (this.kind === "jetski") {
+      const tt = performance.now() / 1000;
+      m.group.position.y = this.pos.y + 0.05 + Math.sin(tt * 2.3 + this.pos.x) * 0.08;
+      m.body.rotation.set(-0.06 - Math.min(0.14, Math.abs(vf) * 0.006) + Math.sin(tt * 1.7) * 0.03, 0, THREE.MathUtils.clamp(-this.steer * 0.5, -0.35, 0.35));
+    } else m.body.rotation.set(this.pitch, 0, THREE.MathUtils.clamp(this.roll, -0.08, 0.08));
     this.wheelSpin += (vf / m.prof.wheelR) * dt;
     m.wheels.forEach((w, i) => {
       w.children[0].rotation.x = this.wheelSpin;
-      if (i < 2) w.rotation.y = this.steer;
+      if (i < (this.kind === "moto" ? 1 : 2)) w.rotation.y = this.steer;
     });
   }
 
