@@ -464,7 +464,7 @@ async function runMatch(opp: C.Club, mine: C.Club, start: number, score: [number
     quality,
     style,
     banner,
-    moments: stadium === "varzea" ? 4 : 6,
+    moments: 10,
   }, matchHud(), matchControls).then((r) => {
     // normalise the score so index 0 is always "my team"
     if (!home) r.score = [r.score[1], r.score[0]];

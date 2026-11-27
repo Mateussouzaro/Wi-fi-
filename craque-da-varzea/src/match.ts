@@ -569,8 +569,11 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     let canetaTarget = new THREE.Vector3();
     const schedule: number[] = [];
     if (M) {
-      const n = Math.max(1, Math.round(((90 - cfg.startMinute) / 90) * cfg.moments!));
-      for (let i = 0; i < n; i++) schedule.push(cfg.startMinute + 4 + Math.random() * (85 - cfg.startMinute));
+      // plenty of chances, even coming off the bench: at least 4, spread evenly (one per slot)
+      const n = Math.max(4, Math.round(((90 - cfg.startMinute) / 90) * cfg.moments!));
+      const a = cfg.startMinute + 3,
+        span = (88 - a) / n;
+      for (let i = 0; i < n; i++) schedule.push(a + i * span + Math.random() * span * 0.7);
       schedule.sort((a, b) => a - b);
     }
     const OPT: Record<string, Choice> = {
@@ -623,8 +626,8 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       skillOn = null;
       skillRing.visible = false;
       usedCaneta = true;
-      const acc = THREE.MathUtils.clamp(1 - err / 0.4, 0, 1);
-      if (Math.random() < acc * 0.75 + user.drib * 0.3 - d.tack * 0.12) {
+      const acc = THREE.MathUtils.clamp(1 - err / 0.5, 0, 1);
+      if (Math.random() < acc * 0.85 + user.drib * 0.3 - d.tack * 0.08) {
         canetaTarget = d.pos.clone().add(new THREE.Vector3(ad * 2.6, 0, (Math.random() - 0.5) * 1.5));
         kick(user, canetaTarget, 9, 0);
         user.noTouch = 0.15;
@@ -684,7 +687,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       const ad = userTeam === 0 ? 1 : -1;
       const gx = goalX(userTeam);
       const uz = (Math.random() - 0.5) * 16;
-      user.pos.set(gx - ad * (13 + Math.random() * 7), 0, uz);
+      user.pos.set(gx - ad * (11 + Math.random() * 5), 0, uz * 0.7);
       user.vel.set(0, 0, 0);
       user.heading = ad > 0 ? Math.PI / 2 : -Math.PI / 2;
       const opp = players.filter((o) => o.team !== userTeam && o.role !== "GK");
@@ -692,7 +695,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
         o.pos.set(gx - ad * (6 + i * 4.5), 0, (i % 2 ? 1 : -1) * (8 + i * 2));
         o.vel.set(0, 0, 0);
       });
-      if (Math.random() < 0.85) {
+      if (Math.random() < 0.5) {
         const m = opp[0];
         m.pos.set(user.pos.x + ad * 3, 0, uz + (Math.random() - 0.5));
       }
@@ -829,7 +832,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       }
       if (schedule.length && minute >= schedule[0] && !kickoffWait) {
         schedule.shift();
-        const incoming = Math.random() < 0.4;
+        const incoming = Math.random() < 0.25;
         hud.feedLine?.(minute, incoming ? `🔥 Lançamento para ${cfg.user.name}!` : `🔥 ${cfg.user.name} recebe na entrada da área!`);
         scoreAtChance = res.score[0] + res.score[1];
         setFeed(false);
