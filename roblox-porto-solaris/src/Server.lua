@@ -433,12 +433,11 @@ local function showcase(cf, index)
 	local src = SHOWCASE[((index or math.random(1, 1000)) - 1) % #SHOWCASE + 1]
 	local m = src:Clone()
 	for _, d in ipairs(m:GetDescendants()) do
-		if d:IsA("LuaSourceContainer") then
+		if d:IsA("LuaSourceContainer") or d:IsA("ProximityPrompt") or d:IsA("ClickDetector") or d:IsA("Sound") then
 			d:Destroy()
 		elseif d:IsA("BasePart") then
 			d.Anchored = true
-		elseif d:IsA("VehicleSeat") or d:IsA("Seat") then
-			d.Disabled = true
+			if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = true end
 		end
 	end
 	local seat = m:FindFirstChild("DriveSeat")
@@ -623,7 +622,10 @@ do
 		local car = showcase(CFrame.new(x, 0.9, cz + 6), i * 3)
 		local ring = part({ Shape = Enum.PartType.Cylinder, Size = V(0.1, 14.4, 14.4), CFrame = CFrame.new(x, 0.32, cz + 6) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(120, 200, 255), Material = Enum.Material.Neon })
 		local _ = ring and tt
-		if car then table.insert(turntables, { car = car, base = car:GetPivot(), speed = 0.35 + i * 0.05 }) end
+		if car then
+			car:SetAttribute("Giro", 0.35 + i * 0.05)
+			table.insert(turntables, car)
+		end
 		local _ = id
 	end
 	-- garage counter NPC prompt
@@ -680,10 +682,15 @@ end
 
 -- ------------------------------------------------------------------ DISTRITO SAKURA (Japanese-style district, west)
 local TweenService = game:GetService("TweenService")
+local buildPond = nil
 do
 	local cx, cz = -300, 180
 	-- stone paving
-	part({ Size = V(220, 0.3, 140), Position = V(cx, 0.12, cz), Color = rgb(150, 146, 140), Material = Enum.Material.Slate })
+	-- (the koi pond at x -325..-287, z 228..252 is left open)
+	local stone = rgb(150, 146, 140)
+	part({ Size = V(220, 0.3, 118), Position = V(cx, 0.12, cz - 11), Color = stone, Material = Enum.Material.Slate })
+	part({ Size = V(85, 0.3, 22), Position = V(cx - 67.5, 0.12, cz + 59), Color = stone, Material = Enum.Material.Slate })
+	part({ Size = V(97, 0.3, 22), Position = V(cx + 61.5, 0.12, cz + 59), Color = stone, Material = Enum.Material.Slate })
 	-- main street through the district (from the ring road)
 	part({ Size = V(220, 0.32, 16), Position = V(cx, 0.14, cz), Color = rgb(70, 70, 74), Material = Enum.Material.Asphalt })
 	-- torii gate at the east entrance
@@ -769,7 +776,7 @@ do
 		part({ Size = V(0.15, 0.15, 24), Position = V(x, 11.5, cz), Color = rgb(30, 30, 30), Material = Enum.Material.SmoothPlastic, CanCollide = false })
 		for k = -2, 2 do
 			local ln = part({ Shape = Enum.PartType.Cylinder, Size = V(1.6, 1.4, 1.4), CFrame = CFrame.new(x, 10.4, cz + k * 4.5) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(220, 40, 40), Material = Enum.Material.Neon, CanCollide = false })
-			table.insert(nightLights, { band = ln })
+			table.insert(nightLights, { glow = ln })
 		end
 	end
 	-- little shops with curtains (noren) and glowing signs
@@ -787,7 +794,7 @@ do
 			local board = part({ Size = V(10, 2, 0.4), CFrame = CFrame.new(x, 8.2, z - side * 6.3) * CFrame.Angles(0, side > 0 and 0 or math.rad(180), 0), Color = rgb(20, 20, 22), Material = Enum.Material.SmoothPlastic })
 			sign(board, sh[1], sh[2])
 			local glow = part({ Size = V(10, 3, 0.2), Position = V(x, 3.6, z - side * 6.1), Color = rgb(255, 220, 160), Material = Enum.Material.Neon, Transparency = 0.35 })
-			table.insert(nightLights, { band = glow })
+			table.insert(nightLights, { glow = glow })
 			local _ = wall
 		end
 	end
@@ -799,10 +806,12 @@ do
 	end
 	-- koi pond beside the pagoda (real water)
 	local kx, kz = px + 44, pz - 2
-	T:FillBlock(CFrame.new(kx, -1.5, kz), V(36, 3, 22), Enum.Material.Air)
-	T:FillBlock(CFrame.new(kx, -3.5, kz), V(36, 1, 22), Enum.Material.Mud)
-	T:FillBlock(CFrame.new(kx, -1.6, kz), V(34, 2.4, 20), Enum.Material.Water)
-	part({ Size = V(38, 0.4, 24), Position = V(kx, 0.25, kz), Color = rgb(150, 146, 140), Material = Enum.Material.Slate, Transparency = 1, CanCollide = false })
+	-- the water is poured after the paving pass (end of the map), which would otherwise fill it in
+	buildPond = function()
+		T:FillBlock(CFrame.new(kx, -1.5, kz), V(38, 3, 24), Enum.Material.Air)
+		T:FillBlock(CFrame.new(kx, -3.5, kz), V(38, 1, 24), Enum.Material.Mud)
+		T:FillBlock(CFrame.new(kx, -1.6, kz), V(36, 2.4, 22), Enum.Material.Water)
+	end
 	for i = 1, 14 do
 		local a = i / 14 * math.pi * 2
 		part({ Size = V(3 + math.random() * 2, 1.4, 2.6), CFrame = CFrame.new(kx + math.cos(a) * 18, 0.4, kz + math.sin(a) * 11) * CFrame.Angles(0, a, 0), Color = rgb(110, 108, 102), Material = Enum.Material.Rock })
@@ -1116,18 +1125,36 @@ local placesValue = Instance.new("StringValue")
 placesValue.Name = "Lugares"
 do
 	local t = {}
-	for _, p in ipairs(PLACES) do table.insert(t, p.id .. "|" .. p.name .. "|" .. p.pos.X .. "|" .. p.pos.Z) end
+	for _, p in ipairs(PLACES) do table.insert(t, p.id .. "|" .. p.name .. "|" .. p.pos.X .. "|" .. p.pos.Z .. "|" .. p.r) end
 	placesValue.Value = table.concat(t, ";")
 end
 placesValue.Parent = ReplicatedStorage
 
 -- ------------------------------------------------------------------ players: credits, owned cars, tutorial, discovered places
 local data = {}
-local function save(plr)
+local dirty = {}
+local function saveNow(plr)
 	local d = data[plr]
 	if not d or not store then return end
-	pcall(function() store:SetAsync("p_" .. plr.UserId, d) end)
+	dirty[plr] = nil
+	local ok, err = pcall(function() store:SetAsync("p_" .. plr.UserId, d) end)
+	if not ok then
+		dirty[plr] = true
+		warn("[Porto Solaris] save falhou: " .. tostring(err))
+	end
 end
+-- marks the data to be written by the autosave (at most once a minute per player)
+local function save(plr)
+	if data[plr] then dirty[plr] = true end
+end
+task.spawn(function()
+	while true do
+		task.wait(60)
+		for plr in pairs(dirty) do
+			if plr.Parent then task.spawn(saveNow, plr) else dirty[plr] = nil end
+		end
+	end
+end)
 local function sendProgress(plr)
 	local d = data[plr]
 	if d then Progress:FireClient(plr, d) end
@@ -1143,7 +1170,8 @@ local function addCredits(plr, n, why)
 	save(plr)
 end
 
-Players.PlayerAdded:Connect(function(plr)
+local function onPlayerAdded(plr)
+	if data[plr] then return end
 	local d = { credits = 0, owned = {}, tutorial = false, found = {} }
 	if store then
 		local ok, s = pcall(function() return store:GetAsync("p_" .. plr.UserId) end)
@@ -1152,8 +1180,12 @@ Players.PlayerAdded:Connect(function(plr)
 			d.owned = s.owned or {}
 			d.tutorial = s.tutorial or false
 			d.found = s.found or {}
+			d.bestLap = s.bestLap
+			d.bestDrift = s.bestDrift
 		end
 	end
+	d.bestLap = type(d.bestLap) == "number" and d.bestLap or nil
+	if not plr.Parent then return end
 	data[plr] = d
 	local ls = Instance.new("Folder")
 	ls.Name = "leaderstats"
@@ -1164,9 +1196,16 @@ Players.PlayerAdded:Connect(function(plr)
 	ls.Parent = plr
 	task.wait(1)
 	sendProgress(plr)
+end
+Players.PlayerAdded:Connect(onPlayerAdded)
+for _, plr in ipairs(Players:GetPlayers()) do task.spawn(onPlayerAdded, plr) end
+game:BindToClose(function()
+	for _, plr in ipairs(Players:GetPlayers()) do task.spawn(saveNow, plr) end
+	task.wait(3)
 end)
 Players.PlayerRemoving:Connect(function(plr)
-	save(plr)
+	saveNow(plr)
+	dirty[plr] = nil
 	local car = carsFolder:FindFirstChild("Carro_" .. plr.UserId)
 	if car then car:Destroy() end
 	data[plr] = nil
@@ -1295,8 +1334,11 @@ Score.OnServerEvent:Connect(function(plr, kind, value)
 		end
 		addCredits(plr, math.clamp(math.floor(pts / 150), 5, 200), "Drift: " .. pts .. " pontos")
 	elseif kind == "lap" then
-		-- the loop is about 3,200 studs long: anything under 20 s is not a real lap
-		if value < 20 or value > 600 then return end
+		-- the loop is about 3,200 studs long: the fastest cars need more than 12 s
+		if value < 12 or value > 600 then
+			Notify:FireClient(plr, "badlap")
+			return
+		end
 		local better = (not d.bestLap) or value < d.bestLap
 		if better then d.bestLap = value end
 		local bonus = 0
@@ -1392,6 +1434,8 @@ do
 		[Enum.Material.Cobblestone] = true,
 		[Enum.Material.Slate] = true,
 		[Enum.Material.Brick] = true,
+		[Enum.Material.Marble] = true,
+		[Enum.Material.WoodPlanks] = true,
 	}
 	local list = {}
 	for _, p in ipairs(map:GetDescendants()) do
@@ -1406,7 +1450,9 @@ do
 		-- 2 extra studs each side, same height as the lawn around it (top at y=-1.2), so there is no ditch
 		local sx, sz = p.Size.X + 4, p.Size.Z + 4
 		T:FillBlock(flat * CFrame.new(0, 2, 0), V(sx, 12, sz), Enum.Material.Air)
-		T:FillBlock(flat * CFrame.new(0, -5.2, 0), V(sx, 8, sz), Enum.Material.Pavement)
+		local under = (p.Position.Z > 284 and p.Material == Enum.Material.WoodPlanks) and Enum.Material.Sand or Enum.Material.Pavement
+		local topY = (under == Enum.Material.Sand) and -5.6 or -5.2
+		T:FillBlock(flat * CFrame.new(0, topY, 0), V(sx, 8, sz), under)
 	end
 	for _, p in ipairs(list) do
 		local bottom = p.Position.Y - p.Size.Y / 2
@@ -1423,6 +1469,7 @@ do
 		})
 	end
 	print("[Porto Solaris] chão pavimentado sob", #list, "superfícies")
+	if buildPond then buildPond() end
 end
 
 -- ------------------------------------------------------------------ day/night cycle and animations
@@ -1430,10 +1477,6 @@ local DAY_LENGTH = 24 * 60 -- seconds for a full day
 local last = os.clock()
 RunService.Heartbeat:Connect(function(dt)
 	Lighting.ClockTime = (Lighting.ClockTime + dt * 24 / DAY_LENGTH) % 24
-	for _, t in ipairs(turntables) do
-		t.base = t.base * CFrame.Angles(0, t.speed * dt, 0)
-		t.car:PivotTo(t.base)
-	end
 end)
 task.spawn(function()
 	local wasNight = nil
@@ -1445,6 +1488,7 @@ task.spawn(function()
 			for _, n in ipairs(nightLights) do
 				if n.l then n.l.Enabled = night end
 				if n.band then n.band.Material = night and Enum.Material.Neon or Enum.Material.Glass n.band.Transparency = night and 0.55 or 1 end
+				if n.glow then n.glow.Material = night and Enum.Material.Neon or Enum.Material.SmoothPlastic end
 			end
 			-- spawned cars switch headlights too
 			for _, car in ipairs(carsFolder:GetChildren()) do

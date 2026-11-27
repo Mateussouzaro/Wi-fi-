@@ -40,8 +40,9 @@ for entry in string.gmatch(catalogueValue.Value, "[^;]+") do
 end
 local PLACES = {}
 for entry in string.gmatch(placesValue.Value, "[^;]+") do
-	local id, name, x, z = string.match(entry, "([^|]+)|([^|]+)|([^|]+)|([^|]+)")
-	table.insert(PLACES, { id = id, name = name, pos = Vector3.new(tonumber(x), 0, tonumber(z)) })
+	local id, name, x, z, r = string.match(entry, "([^|]+)|([^|]+)|([^|]+)|([^|]+)|?([^|]*)")
+	-- big places count as found a bit before their centre (the port's centre is inside a container stack)
+	table.insert(PLACES, { id = id, name = name, pos = Vector3.new(tonumber(x), 0, tonumber(z)), near = math.max(40, (tonumber(r) or 0) * 0.6) })
 end
 local progress = { credits = 0, owned = {}, tutorial = false, found = {} }
 
@@ -118,7 +119,8 @@ local function slideIn(f, from)
 end
 
 -- ------------------------------------------------------------------ toast notifications
-local toastHolder = frame(gui, UDim2.new(0, 320, 0, 300), UDim2.new(0.5, -160, 0, 70), DARK, 1)
+-- below the tutorial panel (y 64..160), so they never cover each other
+local toastHolder = frame(gui, UDim2.new(0, 320, 0, 300), UDim2.new(0.5, -160, 0, 168), DARK, 1)
 local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 6)
 layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -401,12 +403,12 @@ UserInputService.InputBegan:Connect(function(input)
 end)
 
 -- ------------------------------------------------------------------ help card
-local help = frame(gui, UDim2.new(0, 400, 0, 270), UDim2.new(0.5, -200, 0.5, -135), DARK, 0.05)
+local help = frame(gui, UDim2.new(0, 400, 0, 340), UDim2.new(0.5, -200, 0.5, -170), DARK, 0.05)
 corner(help, 18)
 stroke(help, GOLD, 2)
 help.Visible = false
 text(help, "COMO JOGAR", UDim2.new(1, 0, 0, 34), UDim2.new(0, 0, 0, 10), Enum.Font.GothamBlack, 22, GOLD)
-text(help, "🚗  Toque no ícone de CARRO na barra de cima para escolher seu carro (Rua, Esportivos e Super).\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n💰  Descubra lugares do mapa para ganhar créditos e comprar carros novos.", UDim2.new(1, -30, 0, 180), UDim2.new(0, 15, 0, 48), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
+text(help, "🚗  Toque no ícone de CARRO na barra de cima para escolher seu carro (Rua, Esportivos e Super).\n🕹️  No carro, use os botões do painel na tela para acelerar, frear e virar.\n🅿️  Estacione nas vagas do Encontro e mostre seu carro.\n😎  POSES: faça poses do lado do carro.  📷 FOTO: esconde a tela para tirar print.\n🏁  CORRIDA: passe pela LARGADA na praia indo para a direita e siga a luz dourada.\n💨  DRIFT: derrape na Arena de Drift para somar pontos e combo.\n📢  ENCONTRO: a cada 8 min, leve o carro ao estacionamento e vote no mais bonito.\n💰  Descubra lugares do mapa para ganhar créditos.", UDim2.new(1, -30, 0, 250), UDim2.new(0, 15, 0, 48), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1)).TextXAlignment = Enum.TextXAlignment.Left
 local hClose = button(help, "ENTENDI", UDim2.new(0, 140, 0, 36), UDim2.new(0.5, -70, 1, -46), GOLD)
 hClose.TextColor3 = DARK
 hClose.MouseButton1Click:Connect(function() help.Visible = false end)
@@ -451,7 +453,8 @@ local function fmtTime(t)
 end
 
 -- big centre-top label used by drift and race
-local bigBox = frame(gui, UDim2.new(0, 300, 0, 64), UDim2.new(0.5, -150, 0, 110), DARK, 0.2)
+-- (bottom centre: the notifications use the top of the screen)
+local bigBox = frame(gui, UDim2.new(0, 300, 0, 64), UDim2.new(0.5, -150, 1, -150), DARK, 0.2)
 corner(bigBox, 16)
 stroke(bigBox, rgb(255, 70, 70), 2)
 bigBox.Visible = false
@@ -556,7 +559,9 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	elseif s and race.cool <= 0 and not inside then
 		local flatPos = Vector3.new(pos.X, 0, pos.Z)
-		if (flatPos - CHECKS[1]).Magnitude < 16 and s.AssemblyLinearVelocity.Magnitude > 8 then
+		-- only when crossing the start line heading east (towards the first point), not when just passing by
+		local v = s.AssemblyLinearVelocity
+		if (flatPos - CHECKS[1]).Magnitude < 16 and v.X > 8 and math.abs(v.X) > math.abs(v.Z) then
 			race.on, race.idx, race.t = true, 2, 0
 			sWhoosh:Play()
 			toast("🏁 CORRIDA DO PORTO! Siga os pontos e volte à largada", GOLD)
@@ -644,7 +649,8 @@ EventR.OnClientEvent:Connect(function(kind, a, b, c)
 	end
 end)
 Notify.OnClientEvent:Connect(function(kind)
-	if kind == "voted" then toast("✅ Voto registrado!", rgb(120, 255, 140)) end
+	if kind == "voted" then toast("✅ Voto registrado!", rgb(120, 255, 140))
+	elseif kind == "badlap" then toast("🏁 Volta não contou (tempo inválido)", rgb(255, 120, 120)) end
 end)
 
 -- ------------------------------------------------------------------ driving (runs for the car you are driving)
@@ -704,6 +710,31 @@ RunService.Heartbeat:Connect(function(dt)
 	beamA0.Parent = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 end)
 
+-- ------------------------------------------------------------------ showroom turntables (spun here, so the server does not send them every frame)
+local spinning = {}
+task.spawn(function()
+	while true do
+		local mapa = workspace:FindFirstChild("Mapa")
+		if mapa then
+			for _, m in ipairs(mapa:GetChildren()) do
+				if m:IsA("Model") and m:GetAttribute("Giro") and not spinning[m] then spinning[m] = m:GetPivot() end
+			end
+		end
+		task.wait(3)
+	end
+end)
+RunService.RenderStepped:Connect(function(dt)
+	for m, cf in pairs(spinning) do
+		if m.Parent then
+			cf = cf * CFrame.Angles(0, m:GetAttribute("Giro") * dt, 0)
+			spinning[m] = cf
+			m:PivotTo(cf)
+		else
+			spinning[m] = nil
+		end
+	end
+end)
+
 -- ------------------------------------------------------------------ places to discover + tutorial
 local TUT = {
 	{ "PASSO 1 de 5", "Toque no ícone de CARRO na barra de cima, escolha um carro e entre nele." },
@@ -748,7 +779,7 @@ task.spawn(function()
 			local here = ""
 			for _, pl in ipairs(PLACES) do
 				if (p - pl.pos).Magnitude < 60 then here = "📍 " .. pl.name end
-				if (p - pl.pos).Magnitude < 40 and not progress.found[pl.id] then
+				if (p - pl.pos).Magnitude < pl.near and not progress.found[pl.id] then
 					progress.found[pl.id] = true
 					Progress:FireServer("found", pl.id)
 				end
