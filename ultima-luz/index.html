@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>A Última Luz</title>
+    <style>
+      :root { --ink: #f4efe6; --gold: #f2c46b; --panel: rgba(8, 12, 18, 0.72); }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #05080c; color: var(--ink); font-family: Georgia, "Times New Roman", serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+      #stage { position: fixed; inset: 0; }
+      #stage canvas { display: block; width: 100%; height: 100%; }
+      button { font: inherit; color: inherit; }
+
+      /* title */
+      #title { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: flex-end; padding: 0 16px calc(48px + env(safe-area-inset-bottom)); background: linear-gradient(transparent 30%, rgba(3, 6, 10, 0.85)); text-align: center; }
+      #title.on { display: flex; }
+      #title h1 { margin: 0; font-size: clamp(38px, 11vw, 84px); letter-spacing: 0.12em; font-weight: 400; text-shadow: 0 0 30px rgba(242, 196, 107, 0.45); }
+      #title h1 span { color: var(--gold); }
+      #title p { margin: 10px 0 26px; max-width: 520px; color: #c9c2b4; font-style: italic; line-height: 1.5; font-size: 15px; }
+      .tbtn { display: block; width: min(320px, 100%); margin: 6px auto; padding: 14px 18px; border-radius: 999px; border: 1px solid rgba(242, 196, 107, 0.6); background: rgba(10, 14, 20, 0.6); font-size: 17px; letter-spacing: 0.05em; cursor: pointer; }
+      .tbtn.main { background: var(--gold); color: #1a1208; border-color: var(--gold); font-weight: 700; }
+      .tbtn.small { font-size: 13px; padding: 9px; width: min(220px, 100%); opacity: 0.85; }
+
+      /* hud */
+      #hud { display: none; }
+      #hud.on { display: block; }
+      #objBox { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 14px; right: 14px; z-index: 5; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+      #obj { display: none; max-width: 70%; padding: 8px 12px; background: var(--panel); border-left: 3px solid var(--gold); font-size: 14px; line-height: 1.35; }
+      #obj.on { display: block; }
+      #obj::before { content: "OBJETIVO"; display: block; font-size: 10px; letter-spacing: 0.2em; color: var(--gold); margin-bottom: 2px; font-family: system-ui, sans-serif; }
+      #dist { padding: 6px 10px; background: var(--panel); font-size: 13px; font-family: system-ui, sans-serif; }
+      #dist:empty { display: none; }
+      body.cine #objBox, body.cine #act, body.cine #stick { display: none !important; }
+      #act { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom)); z-index: 6; display: none; max-width: 55vw; padding: 14px 18px; border-radius: 16px; border: 2px solid var(--gold); background: rgba(20, 14, 6, 0.8); font-size: 15px; cursor: pointer; animation: pulse 1.4s infinite; }
+      #act.on { display: block; }
+      @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(242, 196, 107, 0.15); } }
+      #stick { position: fixed; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.06); z-index: 4; display: none; pointer-events: none; }
+      #stick.on { display: block; }
+      #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.45); }
+      #help { position: fixed; left: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); font: 11px system-ui, sans-serif; color: rgba(255, 255, 255, 0.55); z-index: 3; pointer-events: none; }
+      body.cine #help { display: none; }
+
+      /* subtitles + diary */
+      #sub { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(9vh + env(safe-area-inset-bottom)); width: min(760px, calc(100% - 28px)); z-index: 12; display: none; padding: 12px 16px 14px; background: rgba(4, 7, 11, 0.78); border-radius: 12px; text-align: center; }
+      #sub.on { display: block; animation: fadein 0.35s; }
+      #subWho { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; font-family: system-ui, sans-serif; font-weight: 700; }
+      #subWho small { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.7; }
+      #subText { margin-top: 6px; font-size: 18px; line-height: 1.45; }
+      @keyframes fadein { from { opacity: 0; } }
+      #diary { position: fixed; z-index: 11; left: 50%; top: 14%; transform: translateX(-50%) rotate(-1.5deg); width: min(420px, calc(100% - 40px)); padding: 26px 24px; background: #efe3c6; color: #3a2a18; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); border-radius: 3px; display: none; font-style: italic; font-size: 17px; line-height: 1.6; background-image: repeating-linear-gradient(transparent 0 27px, rgba(80, 60, 40, 0.15) 27px 28px); }
+      #diary.on { display: block; animation: fadein 0.6s; }
+      #diary::before { content: "Diário de Joaquim Duarte — faroleiro"; display: block; font-style: normal; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 10px; color: #7a5a38; }
+
+      /* cinematic bars, chapter title, fade, end */
+      body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 10; transition: height 0.6s; pointer-events: none; }
+      body::before { top: 0; }
+      body::after { bottom: 0; }
+      body.cine::before, body.cine::after { height: 7vh; }
+      #chap { position: fixed; top: 22%; left: 0; right: 0; text-align: center; z-index: 13; font-size: clamp(20px, 5.5vw, 34px); letter-spacing: 0.08em; opacity: 0; pointer-events: none; text-shadow: 0 2px 20px #000; }
+      #chap.on { animation: chap 4.5s ease-in-out; }
+      @keyframes chap { 0% { opacity: 0; transform: translateY(8px); } 15%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+      #fade { position: fixed; inset: 0; background: #000; z-index: 15; opacity: 0; pointer-events: none; transition: opacity 0.9s; }
+      #fade.on { opacity: 1; }
+      #end { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; background: rgba(0, 0, 0, 0.55); }
+      #end.on { display: flex; animation: fadein 2s; }
+      #end h2 { font-size: clamp(30px, 9vw, 60px); margin: 0 0 8px; font-weight: 400; letter-spacing: 0.1em; }
+      #end p { color: #d8cfbf; max-width: 520px; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="title" class="on">
+      <h1>A ÚLTIMA <span>LUZ</span></h1>
+      <p>Ilha da Bruma, 1994. O farol está apagado há três noites, o faroleiro sumiu e uma tempestade se aproxima. No mar, um barco perdido espera pela luz.</p>
+      <button class="tbtn main" id="tNew">Começar a história</button>
+      <button class="tbtn" id="tCont">Continuar capítulo</button>
+      <button class="tbtn small" id="tQ">Gráficos</button>
+    </div>
+
+    <div id="hud">
+      <div id="objBox"><div id="obj"></div><div id="dist"></div></div>
+      <div id="help">Arraste à esquerda para andar • à direita para olhar</div>
+      <button id="act"></button>
+      <div id="stick"><div id="knob"></div></div>
+    </div>
+
+    <div id="sub"><div id="subWho"></div><div id="subText"></div></div>
+    <div id="diary"><div id="diaryText"></div></div>
+    <div id="chap"></div>
+    <div id="fade" class="on"></div>
+    <div id="end">
+      <h2>FIM</h2>
+      <p><b>A Última Luz</b><br />Uma história sobre família, coragem e a luz que guia quem está perdido no mar.</p>
+      <button class="tbtn main" id="endBtn">Voltar ao início</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
