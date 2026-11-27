@@ -266,34 +266,35 @@ local function buildCar(spec, color, cf, driveable, livery)
 	local paint = color
 	local dark = rgb(20, 20, 24)
 	-- lower body
-	local bodyY = GB + wheelR * 0.6 + (spec.tall and 0.5 or 0) + H * 0.31
-	vis(V(W, H * 0.62, L), CFrame.new(0, bodyY, 0), paint)
+	local BH = H * 0.62 + 0.5 -- body height
+	local bodyY = GB + wheelR * 0.9 + (spec.tall and 0.5 or 0) + BH / 2
+	vis(V(W, BH, L), CFrame.new(0, bodyY, 0), paint)
 	-- hood and trunk slopes
 	local noseLen = spec.wedge and 4.5 or 3.2
-	vis(V(W - 0.2, 0.7, noseLen), CFrame.new(0, bodyY + H * 0.31 + 0.25, -L / 2 + noseLen / 2) * CFrame.Angles(0, math.rad(180), 0), paint, nil, { wedge = true })
+	vis(V(W - 0.2, 0.7, noseLen), CFrame.new(0, bodyY + BH / 2 + 0.25, -L / 2 + noseLen / 2) * CFrame.Angles(0, math.rad(180), 0), paint, nil, { wedge = true })
 	-- side skirts / bumpers
-	vis(V(W + 0.1, 0.45, L - 4), CFrame.new(0, bodyY - H * 0.31 + 0.1, 0), dark)
+	vis(V(W + 0.1, 0.45, L - 4), CFrame.new(0, bodyY - BH / 2 + 0.1, 0), dark)
 	vis(V(W - 0.6, 0.6, 0.5), CFrame.new(0, bodyY - 0.2, -L / 2 - 0.1), dark)
 	vis(V(W - 0.6, 0.6, 0.5), CFrame.new(0, bodyY - 0.2, L / 2 + 0.1), dark)
 	-- cabin: glass greenhouse with a roof in the body colour
 	local cl, ch, cz = spec.cab[1], spec.cab[2], spec.cab[3]
-	local cabY = bodyY + H * 0.31 + ch / 2
+	local cabY = bodyY + BH / 2 + ch / 2
 	vis(V(W - 1.0, ch, cl), CFrame.new(0, cabY, cz), rgb(25, 30, 38), Enum.Material.Glass).Transparency = 0.25
 	vis(V(W - 1.3, 0.25, cl - 1.6), CFrame.new(0, cabY + ch / 2 + 0.05, cz + 0.3), paint)
 	vis(V(W - 1.0, ch * 1.02, 1.6), CFrame.new(0, cabY, cz - cl / 2 - 0.6) * CFrame.Angles(0, math.rad(180), 0), rgb(25, 30, 38), Enum.Material.Glass, { wedge = true }).Transparency = 0.25
 	vis(V(W - 1.0, ch * 1.02, 1.4), CFrame.new(0, cabY, cz + cl / 2 + 0.5), rgb(25, 30, 38), Enum.Material.Glass, { wedge = true }).Transparency = 0.25
 	if spec.round then
-		vis(V(W - 0.6, 1.2, 4), CFrame.new(0, bodyY + H * 0.31 + 0.3, L / 2 - 2.2), paint, nil, { wedge = true })
+		vis(V(W - 0.6, 1.2, 4), CFrame.new(0, bodyY + BH / 2 + 0.3, L / 2 - 2.2), paint, nil, { wedge = true })
 	end
 	-- wing
 	if spec.wing then
-		vis(V(W - 0.4, 0.2, 1.4), CFrame.new(0, bodyY + H * 0.31 + 1.6, L / 2 - 1), dark)
-		for _, s in ipairs({ -1, 1 }) do vis(V(0.2, 1.4, 0.5), CFrame.new(s * (W / 2 - 1), bodyY + H * 0.31 + 0.8, L / 2 - 1), dark) end
+		vis(V(W - 0.4, 0.2, 1.4), CFrame.new(0, bodyY + BH / 2 + 1.6, L / 2 - 1), dark)
+		for _, s in ipairs({ -1, 1 }) do vis(V(0.2, 1.4, 0.5), CFrame.new(s * (W / 2 - 1), bodyY + BH / 2 + 0.8, L / 2 - 1), dark) end
 	end
 	-- livery stripes (racing look)
 	if livery or spec.stripe then
 		local sc = livery or rgb(255, 140, 0)
-		vis(V(1.4, H * 0.62 + 0.04, L + 0.02), CFrame.new(0, bodyY + 0.02, 0), sc)
+		vis(V(1.4, BH + 0.04, L + 0.02), CFrame.new(0, bodyY + 0.02, 0), sc)
 		vis(V(1.4, 0.3, cl - 1.5), CFrame.new(0, cabY + ch / 2 + 0.12, cz + 0.3), sc)
 	end
 	-- lights
@@ -312,7 +313,7 @@ local function buildCar(spec, color, cf, driveable, livery)
 	local wheels = {}
 	for _, wx in ipairs({ -1, 1 }) do
 		for _, wz in ipairs({ -1, 1 }) do
-			local off = CFrame.new(wx * (W / 2 - 0.55), GB + wheelR, wz * (L / 2 - 2.8))
+			local off = CFrame.new(wx * (W / 2 - 0.45), GB + wheelR, wz * (L / 2 - 2.8))
 			local tyre = vis(V(1.1, wheelR * 2, wheelR * 2), off, rgb(22, 22, 22), Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder })
 			local rim = vis(V(1.15, wheelR * 1.3, wheelR * 1.3), off, rgb(200, 200, 205), Enum.Material.Metal, { shape = Enum.PartType.Cylinder })
 			rim.Reflectance = 0.3
@@ -324,7 +325,7 @@ local function buildCar(spec, color, cf, driveable, livery)
 		local seat = Instance.new("VehicleSeat")
 		seat.Name = "Banco"
 		seat.Size = V(2, 0.4, 2)
-		seat.CFrame = root.CFrame * CFrame.new(-1.2, bodyY + H * 0.31 - 0.6, cz + 0.6)
+		seat.CFrame = root.CFrame * CFrame.new(-1.2, bodyY + BH / 2 - 0.6, cz + 0.6)
 		seat.Transparency = 1
 		seat.CanCollide = false
 		seat.Massless = true
@@ -339,7 +340,7 @@ local function buildCar(spec, color, cf, driveable, livery)
 		local pas = Instance.new("Seat")
 		pas.Name = "Carona"
 		pas.Size = V(2, 0.4, 2)
-		pas.CFrame = root.CFrame * CFrame.new(1.2, bodyY + H * 0.31 - 0.6, cz + 0.6)
+		pas.CFrame = root.CFrame * CFrame.new(1.2, bodyY + BH / 2 - 0.6, cz + 0.6)
 		pas.Transparency = 1
 		pas.CanCollide = false
 		pas.Massless = true
