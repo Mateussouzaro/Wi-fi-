@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b3d2e" />
+    <title>Craque da Várzea</title>
+    <style>
+      :root { color-scheme: dark; --grass: #1f7a3d; --grass2: #0b3d2e; --gold: #ffd23f; --ink: #fff; --panel: rgba(8, 22, 16, .92); --line: rgba(255,255,255,.14); --muted: rgba(255,255,255,.65); }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--grass2); color: var(--ink); font-family: "Inter", system-ui, -apple-system, Roboto, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+      input { user-select: text; -webkit-user-select: text; }
+      .screen { position: fixed; inset: 0; display: none; }
+      .screen.on { display: flex; }
+      .btn { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 900; font-size: 15px; color: #10210f; background: var(--gold); box-shadow: 0 4px 0 #b48a12; cursor: pointer; }
+      .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b48a12; }
+      .btn.alt { background: rgba(255,255,255,.12); color: #fff; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+      .btn:disabled { opacity: .4; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; background: rgba(255,210,63,.18); color: var(--gold); font-weight: 800; font-size: 12px; }
+      .chip.big { font-size: 14px; padding: 6px 12px; }
+      .badge { --c1: #111; --c2: #fff; width: 64px; height: 72px; border-radius: 12px 12px 32px 32px; background: linear-gradient(90deg, var(--c1) 0 50%, var(--c2) 50%); display: grid; place-items: center; font-weight: 900; color: #fff; text-shadow: 0 2px 3px #000, 0 0 2px #000; border: 3px solid rgba(255,255,255,.8); margin: 0 auto 8px; }
+      .badge.sm { width: 42px; height: 48px; font-size: 11px; margin: 0; border-width: 2px; }
+
+      /* ---- title */
+      #title { flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 20px;
+        background: repeating-linear-gradient(90deg, #1f7a3d 0 60px, #23873f 60px 120px); }
+      #title::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 40%, transparent 0, rgba(0,0,0,.55) 75%); pointer-events: none; }
+      #title > * { position: relative; }
+      #title h1 { margin: 0; font-size: clamp(48px, 13vw, 104px); line-height: .85; font-weight: 900; font-style: italic; letter-spacing: -2px; text-shadow: 0 5px 0 #0b3d2e, 0 10px 30px rgba(0,0,0,.4); }
+      #title h1 span { display: block; color: var(--gold); }
+      .ball { font-size: 54px; animation: spin 4s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #title .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+      #title .tag { font-size: 12px; letter-spacing: 4px; font-weight: 800; text-transform: uppercase; }
+
+      /* ---- dialogue */
+      #dialog { align-items: flex-end; justify-content: center; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); background: linear-gradient(#7ec8f0, #cfe9f5 45%, #9c7a4a 46%, #8a6a40); }
+      #dialog[data-bg="ceari"] { background: linear-gradient(#0b1a2e, #13304d 45%, #2e7d32 46%, #1f6a2a); }
+      #dialog[data-bg="cidade"] { background: linear-gradient(#ffb347, #ff8a65 40%, #8d99ae 41%, #5c677d); }
+      #dialog .box { width: min(720px, 100%); background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 16px; display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start; }
+      #dFace { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; border: 3px solid rgba(255,255,255,.7); }
+      #dWho { font-weight: 900; font-size: 17px; }
+      #dWho small { display: block; font-weight: 600; font-size: 11px; color: var(--muted); }
+      #dText { font-size: 16px; line-height: 1.45; margin: 6px 0 10px; min-height: 3em; }
+      #dText.type { animation: typein .45s ease-out; }
+      @keyframes typein { from { opacity: 0; transform: translateY(6px); } }
+      #dNext { grid-column: 2; justify-self: end; }
+
+      /* ---- create */
+      #create { align-items: center; justify-content: center; padding: 16px; background: linear-gradient(#0b3d2e, #12261c); overflow: auto; }
+      #create .panel { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 2px solid var(--gold); border-radius: 18px; padding: 16px; }
+      #create h2 { margin: 0; font-style: italic; }
+      #create label { font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+      #create input { width: 100%; font-size: 20px; font-weight: 800; padding: 12px; border-radius: 12px; border: 2px solid var(--line); background: #0d1f16; color: #fff; }
+      .swrow { display: flex; gap: 8px; flex-wrap: wrap; }
+      .swatch { min-width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--line); background: #183226; color: #fff; font-weight: 800; padding: 0 10px; }
+      .swatch.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+      #cErr { color: #ff8a8a; font-size: 13px; min-height: 1em; }
+
+      /* ---- hub */
+      #hub { flex-direction: column; overflow: auto; padding: 14px; padding-top: max(14px, env(safe-area-inset-top)); gap: 12px; background: linear-gradient(#0b3d2e, #0e1a14 60%); }
+      .hhead { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+      #hOvr { font-size: 34px; font-weight: 900; color: var(--gold); text-align: center; line-height: 1; }
+      #hOvr::after { content: "GERAL"; display: block; font-size: 9px; letter-spacing: 2px; color: var(--muted); }
+      #hName { font-size: 22px; font-weight: 900; }
+      #hSub, #hClub small { display: block; color: var(--muted); font-size: 12px; font-weight: 600; }
+      #hClub { font-weight: 800; }
+      .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px; font-weight: 900; }
+      .stat small { display: block; font-size: 10px; letter-spacing: 1px; color: var(--muted); font-weight: 800; text-transform: uppercase; }
+      .meter { height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: 6px; }
+      .meter i { display: block; height: 100%; background: var(--gold); }
+      #hEnergy { background: #4ade80; }
+      .next { background: linear-gradient(90deg, rgba(255,210,63,.2), rgba(255,210,63,.05)); border: 2px solid rgba(255,210,63,.5); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+      .next small { display: block; color: var(--muted); }
+      .acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+      .acts .btn { text-align: left; padding: 12px; }
+      .acts .btn small { display: block; font-weight: 600; font-size: 11px; opacity: .75; }
+      .acts .btn.locked { opacity: .45; }
+      #hLog { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+      /* ---- match */
+      #match, #city { background: #000; }
+      #stage, #cityStage { position: absolute; inset: 0; }
+      #stage canvas, #cityStage canvas { display: block; width: 100%; height: 100%; }
+      .mhud { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; z-index: 5; }
+      #mScore { background: rgba(0,0,0,.75); padding: 8px 14px; border-radius: 10px; font-weight: 900; font-size: 18px; font-variant-numeric: tabular-nums; }
+      #mClock { background: var(--gold); color: #111; padding: 8px 10px; border-radius: 10px; font-weight: 900; font-variant-numeric: tabular-nums; }
+      #mBanner { position: absolute; top: 26%; width: 100%; text-align: center; font-weight: 900; font-style: italic; font-size: clamp(34px, 9vw, 80px); text-shadow: 0 5px 0 #000, 0 8px 24px rgba(0,0,0,.6); opacity: 0; z-index: 5; pointer-events: none; }
+      #mBanner small { display: block; font-size: .32em; font-style: normal; letter-spacing: 2px; }
+      #mBanner.on { animation: ban 2.2s ease-out; }
+      @keyframes ban { 0% { opacity: 0; transform: scale(.6); } 12% { opacity: 1; transform: scale(1.08); } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+      .power { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: 180px; height: 12px; border-radius: 6px; background: rgba(0,0,0,.5); border: 2px solid #fff; overflow: hidden; opacity: 0; z-index: 5; }
+      #powerFill { height: 100%; width: 0; background: linear-gradient(90deg, #4ade80, #facc15, #ef4444); }
+      .pad { position: absolute; inset: auto 0 0 0; height: 0; z-index: 6; }
+      #stick { position: fixed; left: max(22px, env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.4); z-index: 7; touch-action: none; display: none; }
+      #knob { position: absolute; left: 37px; top: 37px; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.55); }
+      .ctrls { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); display: none; grid-template-columns: repeat(3, 66px); gap: 9px; z-index: 7; }
+      .ctrls button { width: 66px; height: 66px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.4); color: #fff; font-weight: 900; font-size: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none; }
+      .ctrls button b { font-size: 22px; line-height: 1; }
+      .ctrls button.main { background: rgba(255,210,63,.55); }
+      .ctrls button.down { background: rgba(255,255,255,.45); }
+      #match.on ~ #stick, #city.on ~ #stick { display: block; }
+      #match.on ~ .ctrls.m { display: grid; }
+      #cityHud { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 5; gap: 8px; }
+      #cityStatus { background: rgba(0,0,0,.6); padding: 8px 12px; border-radius: 10px; font-weight: 800; font-size: 13px; }
+      #cityAsk { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%); display: none; z-index: 6; font-size: 18px; }
+      #cityAsk.on { display: block; animation: pulse 1s infinite; }
+      @keyframes pulse { 50% { transform: translateX(-50%) scale(1.07); } }
+
+      /* ---- modal */
+      #modal { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; padding: 14px; background: rgba(0,0,0,.6); }
+      #modal.on { display: flex; }
+      #modal .panel { width: min(560px, 100%); max-height: 90vh; overflow: auto; background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+      #mTitle { margin: 0; font-style: italic; }
+      #mBtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      .score.big { font-size: 46px; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
+      .rating { text-align: center; font-size: 18px; }
+      .rating b { color: var(--gold); font-size: 26px; }
+      .stars { color: var(--gold); letter-spacing: 2px; }
+      .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; font-size: 11px; color: var(--muted); }
+      .grid4 b { display: block; font-size: 22px; color: #fff; }
+      .gains { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+      .card { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+      .card.offer { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+      .card.offer p { margin: 2px 0 0; font-size: 12px; }
+      .card small { display: block; color: var(--muted); font-size: 11px; }
+      .boot { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; font-size: 22px; }
+      .train { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .answers { display: flex; flex-direction: column; gap: 8px; }
+      .answers .btn { text-align: left; font-weight: 700; }
+      .reporter { font-size: 13px; color: var(--muted); }
+      .q { font-size: 18px; font-weight: 800; }
+      #pad { width: 100%; height: auto; aspect-ratio: 600 / 260; border-radius: 12px; background: #fff; touch-action: none; }
+      .tbar { position: relative; height: 34px; border-radius: 17px; background: rgba(255,255,255,.12); overflow: hidden; }
+      .tbar .zone { position: absolute; top: 0; bottom: 0; background: rgba(74,222,128,.55); }
+      .tbar .mark { position: absolute; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+      .tablewrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+      th, td { padding: 6px; text-align: left; border-bottom: 1px solid var(--line); }
+      tr.me td { color: var(--gold); font-weight: 900; }
+      .attr { display: grid; grid-template-columns: 90px 1fr 30px; gap: 8px; align-items: center; font-size: 13px; }
+      .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
+      .bar i { display: block; height: 100%; background: linear-gradient(90deg, #4ade80, var(--gold)); }
+      .awards { margin: 0; padding-left: 18px; line-height: 1.7; }
+    </style>
+  </head>
+  <body>
+    <div id="title" class="screen">
+      <div class="ball">⚽</div>
+      <div class="tag">Da várzea para o mundo</div>
+      <h1>CRAQUE DA<span>VÁRZEA</span></h1>
+      <div class="row"><button class="btn" id="tNew">▶ Novo jogo (modo história)</button><button class="btn alt" id="tCont">Continuar carreira</button></div>
+      <button class="btn alt" id="tQ">Gráficos: ALTA</button>
+      <p class="muted" style="max-width: 420px">Joystick para correr • segure <b>Chutar</b> para carregar o chute • <b>Passar</b>, <b>Desarme</b> e <b>Pedir</b> a bola. No PC: WASD, Espaço chuta, K passa, L desarma, C pede, Shift corre.</p>
+    </div>
+
+    <div id="dialog" class="screen" data-bg="varzea">
+      <div class="box"><div id="dFace">🧢</div><div><div id="dWho"></div><div id="dText"></div></div><button class="btn" id="dNext">Continuar ▶</button></div>
+    </div>
+
+    <div id="create" class="screen">
+      <div class="panel">
+        <h2>Quem é o novato?</h2>
+        <p class="muted">Seu Nonato precisa saber quem vai entrar no lugar do Tião.</p>
+        <label for="cName">Nome ou apelido</label>
+        <input id="cName" maxlength="16" placeholder="Ex.: Pedrinho" autocomplete="off" />
+        <label for="cNum">Número da camisa</label>
+        <input id="cNum" type="number" min="1" max="99" value="9" />
+        <label>Posição</label><div class="swrow" id="cPos"></div>
+        <label>Tom de pele</label><div class="swrow" id="cSkin"></div>
+        <label>Cabelo</label><div class="swrow" id="cHair"></div>
+        <label>Cor do cabelo</label><div class="swrow" id="cHairCol"></div>
+        <div id="cErr"></div>
+        <button class="btn" id="cGo">Entrar em campo ⚽</button>
+      </div>
+    </div>
+
+    <div id="hub" class="screen">
+      <div class="hhead">
+        <div class="badge sm" id="hBadge">CEA</div>
+        <div><div id="hName">—</div><div id="hSub"></div></div>
+        <div id="hOvr">50</div>
+      </div>
+      <div id="hClub"></div>
+      <div class="stats">
+        <div class="stat"><small>Dinheiro</small><span id="hMoney">R$ 0</span></div>
+        <div class="stat"><small>Seguidores</small><span id="hFans">0</span></div>
+        <div class="stat"><small>Energia</small><div class="meter"><i id="hEnergy"></i></div></div>
+        <div class="stat"><small>Confiança do técnico</small><div class="meter"><i id="hTrust"></i></div></div>
+      </div>
+      <div class="muted" id="hWeek"></div>
+      <div class="next"><div id="hNext"></div><button class="btn" data-act="play">Jogar ⚽</button></div>
+      <div class="acts">
+        <button class="btn alt" data-act="train">🏋️ Treinar<small>Evolua um atributo</small></button>
+        <button class="btn alt" data-act="interview">🎤 Entrevista<small>Fale com a imprensa</small></button>
+        <button class="btn alt" data-act="shirts">✍️ Assinar camisas<small>Leilão do clube</small></button>
+        <button class="btn alt" data-act="city" id="aCity">🏙️ Passear na cidade<small>Fãs pedem autógrafo</small></button>
+        <button class="btn alt" data-act="rest">😴 Descansar<small>+45 de energia</small></button>
+        <button class="btn alt" data-act="agent">🤝 Agente<small>Propostas e empréstimo</small></button>
+        <button class="btn alt" data-act="shop">👟 Loja<small>Chuteiras com bônus</small></button>
+        <button class="btn alt" data-act="table">📊 Tabela<small>Classificação</small></button>
+        <button class="btn alt" data-act="profile">⭐ Perfil<small>Atributos e troféus</small></button>
+        <button class="btn alt" id="hMenu">☰ Menu<small>Tela inicial</small></button>
+      </div>
+      <ul id="hLog"></ul>
+    </div>
+
+    <div id="match" class="screen">
+      <div id="stage"></div>
+      <div class="mhud"><div id="mScore"></div><div id="mClock">0'</div></div>
+      <div id="mBanner"></div>
+      <div class="power"><div id="powerFill"></div></div>
+    </div>
+
+    <div id="city" class="screen">
+      <div id="cityStage"></div>
+      <div id="cityHud"><div id="cityStatus"></div><button class="btn alt" id="cityBack">🏠 Voltar</button></div>
+      <button class="btn" id="cityAsk">✍️ Atender torcedor</button>
+    </div>
+
+    <div id="stick"><div id="knob"></div></div>
+    <div class="ctrls m">
+      <button data-tap="call"><b>🙋</b>Pedir</button>
+      <button data-tap="tackle"><b>🦵</b>Desarme</button>
+      <button data-hold="sprint"><b>⚡</b>Correr</button>
+      <button data-tap="pass"><b>➡️</b>Passar</button>
+      <button data-hold="shoot" class="main" style="grid-column: span 2; width: auto; border-radius: 33px"><b>🥅</b>CHUTAR (segure)</button>
+    </div>
+
+    <div id="modal"><div class="panel"><h2 id="mTitle"></h2><div id="mBody"></div><div id="mBtns"></div></div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
