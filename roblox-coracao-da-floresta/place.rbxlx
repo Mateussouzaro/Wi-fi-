@@ -1,8 +1,4 @@
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
-<Item class="Workspace" referent="RBX00000000000000000000000000000001"><Properties><string name="Name">Workspace</string><float name="Gravity">196.2</float></Properties></Item>
-<Item class="Lighting" referent="RBX00000000000000000000000000000002"><Properties><string name="Name">Lighting</string></Properties></Item>
-<Item class="ReplicatedStorage" referent="RBX00000000000000000000000000000003"><Properties><string name="Name">ReplicatedStorage</string></Properties></Item>
-<Item class="ServerScriptService" referent="RBX00000000000000000000000000000005"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000000000000000000000000000004"><Properties><string name="Name">CoracaoDaFloresta</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — server: builds the whole map, checkpoints, obstacles,
+<roblox version="4"><Item class="Workspace" referent="RBX00000000000000000000000000000001"><Properties><string name="Name">Workspace</string><float name="Gravity">196.2</float></Properties></Item><Item class="Lighting" referent="RBX00000000000000000000000000000002"><Properties><string name="Name">Lighting</string></Properties></Item><Item class="ReplicatedStorage" referent="RBX00000000000000000000000000000003"><Properties><string name="Name">ReplicatedStorage</string></Properties></Item><Item class="ServerScriptService" referent="RBX00000000000000000000000000000005"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000000000000000000000000000004"><Properties><string name="Name">CoracaoDaFloresta</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — server: builds the whole map, checkpoints, obstacles,
 -- fragments, the Dr. Fumaça boss and the story beats.
 
 local Players = game:GetService("Players")
@@ -834,9 +830,7 @@ RunService.Heartbeat:Connect(function(dt)
 		bossHead.CFrame = bossHead.CFrame * CFrame.Angles(0, dt * 0.5, 0)
 	end
 end)
-]]></ProtectedString></Properties></Item>
-</Item>
-<Item class="StarterPlayer" referent="RBX00000000000000000000000000000008"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000000000000000000000000000007"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000000000000000000000000000006"><Properties><string name="Name">Historia</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — client: story dialogue (typewriter + sounds), objective,
+]]></ProtectedString></Properties></Item></Item><Item class="StarterPlayer" referent="RBX00000000000000000000000000000008"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000000000000000000000000000007"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000000000000000000000000000006"><Properties><string name="Name">Historia</string><bool name="Disabled">false</bool><ProtectedString name="Source"><![CDATA[-- Coração da Floresta — client: story dialogue (typewriter + sounds), objective,
 -- chapter banners and per-zone lighting/ambience.
 
 local Players = game:GetService("Players")
@@ -1181,9 +1175,4 @@ Zone.OnClientEvent:Connect(function(z)
 end)
 
 refreshObjective()
-]]></ProtectedString></Properties></Item>
-</Item>
-</Item>
-<Item class="StarterGui" referent="RBX00000000000000000000000000000009"><Properties><string name="Name">StarterGui</string></Properties></Item>
-<Item class="SoundService" referent="RBX0000000000000000000000000000000A"><Properties><string name="Name">SoundService</string></Properties></Item>
-</roblox>
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterGui" referent="RBX00000000000000000000000000000009"><Properties><string name="Name">StarterGui</string></Properties></Item><Item class="SoundService" referent="RBX0000000000000000000000000000000A"><Properties><string name="Name">SoundService</string></Properties></Item></roblox>
