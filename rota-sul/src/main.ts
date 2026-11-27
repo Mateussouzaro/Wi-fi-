@@ -418,7 +418,24 @@ function init() {
     scene.add(m);
     pickups.push(m);
   }
-  (window as unknown as Record<string, unknown>).__rs = { player, cars, police, setWanted, world: () => world };
+  (window as unknown as Record<string, unknown>).__rs = {
+    player,
+    cars,
+    police,
+    setWanted,
+    world: () => world,
+    drive,
+    step: (dt: number) => step(dt),
+    enter: () => enterOrExit(),
+    spawnPolice: () => spawnPolice(),
+    big: (a: string, b: string) => bigMsg(a, b, "#ffd36b", 2.5),
+    play: () => {
+      $("title").style.display = "none";
+      $("hud").classList.add("on");
+      document.body.classList.add("playing");
+      paused = false;
+    },
+  };
   $("loading").style.display = "none";
   $("menu").style.display = "flex";
   // first frame behind the title, so the menu shows the city
@@ -467,14 +484,30 @@ let time = 0;
 let paused = true;
 let shake = 0;
 
+// Capture mode (#capture in the URL): no real-time loop; a recorder drives step(dt)
+// frame by frame and can script the controls through `drive`.
+const CAPTURE = location.hash.includes("capture");
+const drive: { moveX?: number; moveY?: number; handbrake?: boolean; sprint?: boolean; camDX?: number } = {};
+
 function loop(now: number) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (paused || !world) return;
+  if (paused || !world || CAPTURE) return;
+  step(dt);
+}
+
+function step(dt: number) {
   time += dt;
   input.poll();
   const st = input.state;
+  if (CAPTURE) {
+    if (drive.moveX !== undefined) st.moveX = drive.moveX;
+    if (drive.moveY !== undefined) st.moveY = drive.moveY;
+    if (drive.handbrake !== undefined) st.handbrake = drive.handbrake;
+    if (drive.sprint !== undefined) st.sprint = drive.sprint;
+    if (drive.camDX) st.camDX += drive.camDX;
+  }
 
   if (st.pressed.has("enter")) enterOrExit();
   if (st.pressed.has("radio") && player.car) toast(`📻 ${audio.nextStation()}`);
