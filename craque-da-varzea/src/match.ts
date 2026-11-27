@@ -188,7 +188,7 @@ export interface MatchControls {
   released: () => (Gesture & { tap: boolean; long: boolean }) | null; // consumed once
 }
 
-export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void; feed?: (on: boolean) => void; feedLine?: (m: number, txt: string, goal?: boolean) => void; feedFast?: () => boolean; spinUI?: (on: boolean) => void }, controls: MatchControls): Promise<MatchResult> {
+export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: HTMLElement; clock: HTMLElement; banner: (t: string, sub?: string) => void; power: HTMLElement; choices: (opts: Choice[] | null, title?: string) => void; ticker: (t: string) => void; feed?: (on: boolean) => void; feedLine?: (m: number, txt: string, goal?: boolean, voice?: string) => void; feedFast?: () => boolean; spinUI?: (on: boolean) => void }, controls: MatchControls): Promise<MatchResult> {
   return new Promise((resolve) => {
     const varzea = cfg.stadium === "varzea";
     const renderer = new THREE.WebGLRenderer({ antialias: cfg.style !== "pixel", powerPreference: "high-performance" });
@@ -808,7 +808,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
     }
     let scoreAtChance = 0;
     function backToFeed() {
-      if (res.score[0] + res.score[1] === scoreAtChance) hud.feedLine?.(minute, `😩 Uhh! A chance de ${cfg.user.name} não entrou.`);
+      if (res.score[0] + res.score[1] === scoreAtChance) hud.feedLine?.(minute, `😩 Uhh! A chance de ${cfg.user.name} não entrou.`, false, "mt_miss");
       hud.choices(null);
       mState = "feed";
       setFeed(true);
@@ -820,26 +820,27 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
       for (const t of [0, 1])
         if (Math.random() < goalRate(t) * dm && minute < 89.5) {
           res.score[t]++;
-          hud.feedLine?.(minute, t === userTeam ? `⚽ GOL do ${teamName(t)}!` : `⚽ Gol do ${teamName(t)}.`, true);
+          hud.feedLine?.(minute, t === userTeam ? `⚽ GOL do ${teamName(t)}!` : `⚽ Gol do ${teamName(t)}.`, true, t === userTeam ? "mt_goal2" : "mt_opp");
           if (t === userTeam && navigator.vibrate) navigator.vibrate(60);
         }
       if (minute >= nextFiller) {
         nextFiller = minute + 3 + Math.random() * 6;
         const t = Math.random() < 0.5 ? 0 : 1;
-        hud.feedLine?.(minute, FILLER[Math.floor(Math.random() * FILLER.length)](t));
+        const fi = Math.floor(Math.random() * FILLER.length);
+        hud.feedLine?.(minute, FILLER[fi](t), false, fi === 6 ? "mt_post" : fi === 2 ? "mt_save" : undefined);
       }
-      if (before < 45 && minute >= 45) hud.feedLine?.(45, "⏸️ Fim do primeiro tempo. Começa o segundo!");
+      if (before < 45 && minute >= 45) hud.feedLine?.(45, "⏸️ Fim do primeiro tempo. Começa o segundo!", false, "mt_half");
       hud.clock.textContent = `${Math.floor(minute)}'`;
       hud.score.innerHTML = `<b>${cfg.home.short}</b> ${res.score[0]} × ${res.score[1]} <b>${cfg.away.short}</b>`;
       setFeed(true);
       if (minute >= 90) {
-        hud.feedLine?.(90, "🏁 Fim de jogo!");
+        hud.feedLine?.(90, "🏁 Fim de jogo!", false, "mt_end");
         return finish();
       }
       if (schedule.length && minute >= schedule[0] && !kickoffWait) {
         schedule.shift();
         const incoming = Math.random() < 0.25;
-        hud.feedLine?.(minute, incoming ? `🔥 Lançamento para ${cfg.user.name}!` : `🔥 ${cfg.user.name} recebe na entrada da área!`);
+        hud.feedLine?.(minute, incoming ? `🔥 Lançamento para ${cfg.user.name}!` : `🔥 ${cfg.user.name} recebe na entrada da área!`, false, Math.random() < 0.5 ? "mt_chance" : "mt_chance2");
         scoreAtChance = res.score[0] + res.score[1];
         setFeed(false);
         pause = 0;
@@ -1224,7 +1225,7 @@ export function playMatch(canvasHost: HTMLElement, cfg: MatchCfg, hud: { score: 
           const mine = scoringTeam === userTeam;
           hud.banner(mine ? "GOOOOL!" : "Gol do adversário", scorer?.user ? `${cfg.user.name.toUpperCase()} marca!` : teams[scoringTeam].name);
           if (navigator.vibrate && mine) navigator.vibrate([80, 60, 160]);
-          if (M) hud.feedLine?.(minute, scorer?.user ? `⚽ GOOOL de ${cfg.user.name}!!` : mine ? `⚽ GOL do ${teams[scoringTeam].name}!${ball.lastPasser?.user ? ` Assistência de ${cfg.user.name}!` : ""}` : `⚽ Gol do ${teams[scoringTeam].name}.`, true);
+          if (M) hud.feedLine?.(minute, scorer?.user ? `⚽ GOOOL de ${cfg.user.name}!!` : mine ? `⚽ GOL do ${teams[scoringTeam].name}!${ball.lastPasser?.user ? ` Assistência de ${cfg.user.name}!` : ""}` : `⚽ Gol do ${teams[scoringTeam].name}.`, true, mine ? "mt_goal" : "mt_opp");
           pause = 2.8;
           kickoffTeam = 1 - scoringTeam;
           kickoffWait = true;

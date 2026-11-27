@@ -172,6 +172,10 @@
       .grid4 b { display: block; font-size: 22px; color: #fff; }
       .gains { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
       .card { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+      button.offer { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; width: 100%; text-align: left; background: rgba(255,255,255,.06); color: inherit; border: 3px solid rgba(255,255,255,.35); padding: 10px; margin: 8px 0; font: inherit; cursor: pointer; }
+      button.offer:active, button.offer:hover { border-color: var(--gold); background: rgba(255,210,63,.12); }
+      button.offer small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+      body.pixel button.offer small { font-size: 8px; line-height: 1.8; }
       .card.offer { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
       .card.offer p { margin: 2px 0 0; font-size: 12px; }
       .card small { display: block; color: var(--muted); font-size: 11px; }

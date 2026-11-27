@@ -14,6 +14,9 @@ export const CAST: Record<string, { face: string; color: string; role: string }>
   Tião: { face: "🤕", color: "#e76f51", role: "Centroavante do Unidos" },
   Narrador: { face: "📻", color: "#6c757d", role: "Rádio Comunitária Esperança" },
   "Wagner Lima": { face: "🕶️", color: "#111111", role: "Olheiro do Ceari Sporting Clube" },
+  "Célia Ramos": { face: "🧣", color: "#0077b6", role: "Olheira dos Tubarões do Norte" },
+  "Beto Farias": { face: "🧔", color: "#f77f00", role: "Olheiro do Operário do Sul" },
+  "Técnico": { face: "📋", color: "#2a9d8f", role: "Seu novo treinador" },
   "Mãe": { face: "👩🏾", color: "#d4a5a5", role: "Sua mãe" },
   "Prof. Ademir": { face: "📋", color: "#2a9d8f", role: "Técnico do Ceari" },
   Marcão: { face: "😎", color: "#f4a261", role: "Empresário" },
@@ -37,34 +40,41 @@ export const PRE_MATCH: Line[] = [
 
 export const SCOUT_GOOD: Line[] = [
   { voice: "sg0", shot: "final", who: "Narrador", text: "Fim de jogo no Jardim Esperança! E que estreia do garoto {nome}!" },
-  { voice: "sg1", shot: "scout", who: "Wagner Lima", text: "Ei, garoto! Posso falar contigo um minuto? Meu nome é Wagner Lima, sou olheiro do Ceari Sporting Clube." },
-  { voice: "sg2", shot: "scout2", who: "Wagner Lima", text: "Vinte anos rodando várzea e eu nunca vi um moleque entrar no segundo tempo e mudar um jogo desse jeito." },
-  { voice: "sg3", shot: "scout3", who: "Wagner Lima", text: "O Ceari tá montando o time pra Série B. Quero você lá na peneira segunda-feira. Se for bem, assina contrato." },
-  { voice: "sg4", shot: "mae", who: "Mãe", text: "Filho… é o Ceari! Vai, meu filho. Eu sempre soube." },
-  { voice: "sg5", shot: "sunset", who: "Narrador", text: "Na segunda-feira, você brilhou na peneira. O Ceari ofereceu o seu primeiro contrato profissional!" },
+  ...SCOUTS(),
 ];
 export const SCOUT_OK: Line[] = [
   { voice: "so0", shot: "final", who: "Narrador", text: "Fim de jogo. O resultado não veio, mas alguém na beira do campo prestou atenção em {nome}." },
-  { voice: "so1", shot: "scout", who: "Wagner Lima", text: "Garoto, sou Wagner Lima, olheiro do Ceari. O placar não ajudou, mas eu vi coisa boa em você." },
-  { voice: "so2", shot: "scout2", who: "Wagner Lima", text: "Tem talento cru aí. O Ceari tá precisando de molecada com fome. Aparece na peneira segunda." },
-  { voice: "so3", shot: "mae", who: "Mãe", text: "Vai, filho. Uma chance dessa não aparece duas vezes." },
-  { voice: "so4", shot: "sunset", who: "Narrador", text: "Na peneira, você deu tudo e convenceu a comissão técnica. O Ceari ofereceu o seu primeiro contrato!" },
+  ...SCOUTS(),
+];
+// three scouts come down from the stands; then the player picks the club
+function SCOUTS(): Line[] {
+  return [
+    { voice: "sc0", shot: "scouts", who: "Narrador", text: "E olha só: três olheiros desceram da arquibancada atrás do garoto!" },
+    { voice: "sc1", shot: "talkW", who: "Wagner Lima", text: "Wagner Lima, do Ceari Sporting Clube. Time de raça, torcida apaixonada. Contigo no elenco a gente sobe pra Série A!" },
+    { voice: "sc2", shot: "talkC", who: "Célia Ramos", text: "Célia Ramos, dos Tubarões do Norte. No Porto Norte o estádio enche todo domingo. Quero você no nosso ataque." },
+    { voice: "sc3", shot: "talkB", who: "Beto Farias", text: "Beto Farias, Operário do Sul. O time mais forte da Série B. A vaga vai ser disputada, mas o salário é o melhor." },
+    { voice: "sc4", shot: "mae", who: "Mãe", text: "Filho… três times querendo você! Escolhe com o coração." },
+  ];
+}
+export const SIGNED: Line[] = [
+  { voice: "sc5", shot: "sunset", who: "Narrador", text: "Na segunda-feira você brilhou na peneira e assinou o seu primeiro contrato profissional com o {clube}!" },
 ];
 
-export const CEARI_WELCOME: Line[] = [
-  { voice: "ce0", shot: "ceari", who: "Prof. Ademir", text: "Seja bem-vindo ao Ceari, {nome}. Aqui ninguém tem lugar garantido. Você começa no banco e vai ter que ganhar a vaga no treino." },
-  { voice: "ce1", shot: "ceari2", who: "Prof. Ademir", text: "Treina, descansa e quando eu te chamar, entra e resolve. Entendido?" },
+export const WELCOME: Line[] = [
+  { voice: "ce0", shot: "ceari", who: "Técnico", text: "Seja bem-vindo ao {clube}, {nome}. Aqui ninguém tem lugar garantido. Você começa no banco e vai ter que ganhar a vaga no treino." },
+  { voice: "ce1", shot: "ceari2", who: "Técnico", text: "Treina, descansa e quando eu te chamar, entra e resolve. Entendido?" },
 ];
+
 
 export const AGENT_INTRO: Line[] = [
-  { who: "Marcão", text: "Fala, craque! Marcão, empresário. Tô de olho em você desde a várzea, tá ligado?" },
-  { who: "Marcão", text: "Comigo do teu lado, as propostas aparecem: Série A, empréstimo pra ganhar minuto, aumento de salário… Fico com 10%." },
-  { who: "Marcão", text: "Pensa aí e me chama na aba Agente quando quiser fechar." },
+  { voice: "ag0", who: "Marcão", text: "Fala, craque! Marcão, empresário. Tô de olho em você desde a várzea, tá ligado?" },
+  { voice: "ag1", who: "Marcão", text: "Comigo do teu lado, as propostas aparecem: Série A, empréstimo pra ganhar minuto, aumento de salário… Fico com 10%." },
+  { voice: "ag2", who: "Marcão", text: "Pensa aí e me chama na aba Agente quando quiser fechar." },
 ];
 
 export const FIRST_FANS: Line[] = [
-  { who: "Torcedor", text: "Ô {nome}! Você é o cara do Ceari, né?! Meu filho tem teu pôster no quarto!" },
-  { who: "Narrador", text: "Sua fama está crescendo. Agora os torcedores te reconhecem na rua: vá passear na cidade e dê autógrafos!" },
+  { voice: "fa0", who: "Torcedor", text: "Ô {nome}! Você é o cara do {clube}, né?! Meu filho tem teu pôster no quarto!" },
+  { voice: "fa1", who: "Narrador", text: "Sua fama está crescendo. Agora os torcedores te reconhecem na rua: vá passear na cidade e dê autógrafos!" },
 ];
 
 export interface Question {

@@ -8,7 +8,7 @@ import { makeView, Style } from "./pixel";
 export type Shot =
   | "wide" | "bench" | "coach" | "injury" | "tiao" | "callup"
   | "sub" | "enter"
-  | "final" | "scout" | "scout2" | "scout3" | "mae" | "sunset"
+  | "final" | "scout" | "scout2" | "scout3" | "scouts" | "talkW" | "talkC" | "talkB" | "mae" | "sunset"
   | "ceari" | "ceari2";
 
 interface Actor {
@@ -28,7 +28,7 @@ const BENCH_Z = W / 2 + 3;
 const UNI = { c1: 0x1e4fa3, c2: 0xffffff };
 const FER = { c1: 0xd62828, c2: 0x111111 };
 
-export function startCutscene(host: HTMLElement, style: Style, quality: "alta" | "baixa", me: { look: { skin: number; hair: string; hairColor: number }; number: number } | null, varzea = true) {
+export function startCutscene(host: HTMLElement, style: Style, quality: "alta" | "baixa", me: { look: { skin: number; hair: string; hairColor: number }; number: number } | null, varzea = true, clubKit: { c1: number; c2: number } = { c1: 0x111111, c2: 0xffffff }) {
   const renderer = new THREE.WebGLRenderer({ antialias: style !== "pixel" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.appendChild(renderer.domElement);
@@ -128,7 +128,7 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
   const SK = [0x5c3a21, 0x8d5524, 0xa0673a, 0xc68642, 0xe0ac69, 0xf1c27d];
   const HR = ["short", "buzz", "afro", "bald", "long"];
   const meLook: Look = me
-    ? { skin: me.look.skin, hair: me.look.hair, hairColor: me.look.hairColor, shirt: varzea ? UNI.c1 : 0x111111, shirt2: 0xffffff, shorts: 0xffffff, socks: varzea ? UNI.c1 : 0x111111, boots: 0x111111, number: me.number }
+    ? { skin: me.look.skin, hair: me.look.hair, hairColor: me.look.hairColor, shirt: varzea ? UNI.c1 : clubKit.c1, shirt2: varzea ? 0xffffff : clubKit.c2, shorts: varzea ? 0xffffff : clubKit.c2, socks: varzea ? UNI.c1 : clubKit.c1, boots: 0x111111, number: me.number }
     : { skin: 0x8d5524, hair: "short", hairColor: 0x120c08, shirt: 0xff8c1a, shirt2: 0xffb15c, shorts: 0xffffff, socks: UNI.c1, boots: 0x111111, number: -1 };
   const hero = add(meLook, -6.5, BENCH_Z - 0.1);
   // reserves wear orange bibs
@@ -141,8 +141,11 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
   for (let i = 0; i < 5; i++) players.push(add(kit(UNI, [2, 4, 6, 8, 10][i], SK[i % 6], HR[i % 5]), -10 + i * 5, (i % 2 ? -1 : 1) * (4 + i * 2)));
   for (let i = 0; i < 6; i++) players.push(add(kit(FER, [1, 3, 5, 7, 11, 4][i], SK[(i + 3) % 6], HR[(i + 1) % 5]), -6 + i * 5, (i % 2 ? 1 : -1) * (3 + i * 2)));
   const scout = add({ skin: 0xe0ac69, hair: "bald", hairColor: 0x222222, shirt: 0x111111, shirt2: 0x111111, shorts: 0x2b2d42, socks: 0x2b2d42, boots: 0x111111, number: -1 }, 30, BENCH_Z + 2, 1.9);
+  const celia = add({ skin: 0xf1c27d, hair: "long", hairColor: 0x6b4423, shirt: 0x0077b6, shirt2: 0xffffff, shorts: 0x1d3557, socks: 0x1d3557, boots: 0x111111, number: -1 }, 32, BENCH_Z + 2, 1.8);
+  const beto = add({ skin: 0x5c3a21, hair: "short", hairColor: 0x111111, shirt: 0xf77f00, shirt2: 0x222222, shorts: 0x222222, socks: 0x222222, boots: 0x111111, number: -1 }, 34, BENCH_Z + 2, 1.95);
+  let focus: Actor | null = null; // who the hero looks at
   const mae = add({ skin: 0x8d5524, hair: "long", hairColor: 0x1a1008, shirt: 0xe56b8f, shirt2: 0xe56b8f, shorts: 0x5a3e8a, socks: 0x5a3e8a, boots: 0xffffff, number: -1 }, 30, BENCH_Z + 3, 1.8);
-  const ademir = add({ skin: 0xc68642, hair: "short", hairColor: 0x555555, shirt: 0x111111, shirt2: 0xffffff, shorts: 0x111111, socks: 0x111111, boots: 0x111111, number: -1 }, 30, 0, 1.9);
+  const ademir = add({ skin: 0xc68642, hair: "short", hairColor: 0x555555, shirt: clubKit.c1, shirt2: clubKit.c2, shorts: 0x111111, socks: 0x111111, boots: 0x111111, number: -1 }, 30, 0, 1.9);
   // a ball for the match in the background
   const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }));
   ball.position.set(0, 0.22, 0);
@@ -173,6 +176,7 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
   scene.add(board);
 
   // ---- shots
+  const SPOT = { W: new THREE.Vector3(-1.4, 0, W / 2 + 2.6), C: new THREE.Vector3(0.8, 0, W / 2 + 3.0), B: new THREE.Vector3(3.0, 0, W / 2 + 2.6) };
   let shot: Shot = "wide";
   let st = 0;
   const camPos = new THREE.Vector3(0, 14, 34);
@@ -213,7 +217,7 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
         matchOn = true;
         sit(hero, -6.5), sit(res1, -8.6), sit(res2, -4.4);
         coach.pos.set(-2.4, 0, BENCH_Z - 1.2);
-        offstage(scout, mae, ademir);
+        offstage(scout, mae, ademir, celia, beto);
         move([-26, 16, 40], [18, 13, 38], [-6, 0, 0], [6, 0, 0], 7);
         break;
       case "bench":
@@ -305,9 +309,48 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
         scout.target = undefined;
         move([3.4, 1.7, W / 2 - 1.4], [3.1, 1.6, W / 2 - 1.1], [-1, 1.3, W / 2 + 0.8], [-1, 1.3, W / 2 + 0.8], 6);
         break;
+      case "scouts":
+        sunset = 1;
+        matchOn = false;
+        hero.sink = 0;
+        hero.pos.set(0.8, 0, W / 2 + 0.6);
+        hero.target = undefined;
+        offstage(res1, res2, coach, tiao);
+        scout.pos.set(-6, 0, W / 2 + 5);
+        celia.pos.set(6, 0, W / 2 + 5.5);
+        beto.pos.set(9, 0, W / 2 + 4.5);
+        scout.target = SPOT.W.clone();
+        celia.target = SPOT.C.clone();
+        beto.target = SPOT.B.clone();
+        focus = celia;
+        move([0.8, 2.3, W / 2 - 5.5], [0.8, 2.0, W / 2 - 4], [0.8, 1.1, W / 2 + 2.2], [0.8, 1.1, W / 2 + 2.2], 6);
+        break;
+      case "talkW":
+      case "talkC":
+      case "talkB": {
+        hero.pos.set(0.8, 0, W / 2 + 0.6);
+        hero.sink = 0;
+        scout.pos.copy(SPOT.W);
+        celia.pos.copy(SPOT.C);
+        beto.pos.copy(SPOT.B);
+        scout.target = celia.target = beto.target = undefined;
+        focus = s === "talkW" ? scout : s === "talkC" ? celia : beto;
+        const f = focus.pos;
+        // reverse shot: from beside the hero toward the one speaking (who faces the hero)
+        const d = hero.pos.clone().sub(f).setY(0).normalize();
+        const ang = focus === beto ? 0.35 : -0.35;
+        d.applyAxisAngle(new THREE.Vector3(0, 1, 0), ang);
+        const c0 = f.clone().addScaledVector(d, 4.0),
+          c1 = f.clone().addScaledVector(d, 3.3);
+        move([c0.x, 1.8, c0.z], [c1.x, 1.7, c1.z], [f.x, 1.2, f.z], [f.x, 1.2, f.z], 6);
+        break;
+      }
       case "mae":
         hero.pos.set(-1, 0, W / 2 + 0.8);
         scout.target = new THREE.Vector3(6, 0, W / 2 + 3);
+        celia.target = new THREE.Vector3(8, 0, W / 2 + 3.4);
+        beto.target = new THREE.Vector3(10, 0, W / 2 + 2.8);
+        focus = mae;
         mae.pos.set(-7, 0, W / 2 + 3);
         mae.target = new THREE.Vector3(-1.9, 0, W / 2 + 1.4);
         move([-1, 1.9, W / 2 - 4.5], [-1.5, 1.6, W / 2 - 3.4], [-1.8, 1.2, W / 2 + 1], [-1.5, 1.2, W / 2 + 1], 6);
@@ -327,7 +370,7 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
           p.pos.set(-14 + (i % 6) * 5, 0, -8 + Math.floor(i / 6) * 4);
           p.target = undefined;
         });
-        offstage(res1, res2, coach, tiao, scout, mae, ...players.slice(5));
+        offstage(res1, res2, coach, tiao, scout, mae, celia, beto, ...players.slice(5));
         move([0.8, 1.8, 8], [0.8, 1.6, 6], [0.8, 1.3, 2], [0.8, 1.3, 2], 6);
         break;
       case "ceari2":
@@ -402,6 +445,10 @@ export function startCutscene(host: HTMLElement, style: Style, quality: "alta" |
         if ((shot === "scout2" || shot === "scout3" || shot === "mae" || shot === "scout") && (a === hero || a === scout)) {
           const o = a === hero ? scout : hero;
           a.heading = Math.atan2(o.pos.x - a.pos.x, o.pos.z - a.pos.z);
+        }
+        if (["scouts", "talkW", "talkC", "talkB"].includes(shot)) {
+          if (a === hero && focus) a.heading = Math.atan2(focus.pos.x - a.pos.x, focus.pos.z - a.pos.z);
+          if (a === scout || a === celia || a === beto) a.heading = Math.atan2(hero.pos.x - a.pos.x, hero.pos.z - a.pos.z);
         }
         if (shot === "mae" && a === mae) a.heading = Math.atan2(hero.pos.x - a.pos.x, hero.pos.z - a.pos.z);
         if ((shot === "coach" || shot === "callup") && a === coach) a.heading = Math.atan2(hero.pos.x - a.pos.x, hero.pos.z - a.pos.z);

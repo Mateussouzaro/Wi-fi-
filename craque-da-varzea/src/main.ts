@@ -138,7 +138,23 @@ const take = (k: string) => {
 
 // ---------------------------------------------------------------- dialogue scenes
 function fill(t: string) {
-  return t.replace(/\{nome\}/g, s.name || "garoto").replace(/\{numero\}/g, String(s.number));
+  return t
+    .replace(/\{nome\}/g, s.name || "garoto")
+    .replace(/\{numero\}/g, String(s.number))
+    .replace(/\{clube\}/g, s.contract ? club(s.contract.clubId).name : "time");
+}
+// One-off voice lines: fans, reporter, match commentary.
+const sayAudio = new Audio();
+function say(id: string) {
+  const src = VOICE[id];
+  if (!src) return;
+  try {
+    sayAudio.pause();
+    sayAudio.src = src;
+    sayAudio.play().catch(() => {});
+  } catch {
+    /* no audio */
+  }
 }
 // Crowd murmur under the cutscenes (filtered noise, no audio files needed).
 let crowdAmb: { stop: () => void } | null = null;
@@ -185,7 +201,8 @@ function dialogue(lines: S.Line[], bg = "varzea") {
     const cine = lines.some((l) => l.shot);
     $("dialog").classList.toggle("cine", cine);
     const me = lines === S.PROLOGUE ? null : { look: s.look, number: s.number };
-    const cs = cine ? startCutscene($("dStage"), style, quality, me, bg !== "ceari") : null;
+    const kit = bg === "ceari" && s.contract ? club(s.contract.clubId) : undefined;
+    const cs = cine ? startCutscene($("dStage"), style, quality, me, bg !== "ceari", kit ? { c1: kit.c1, c2: kit.c2 } : undefined) : null;
     if (cine) crowdAmbience(true);
     const voice = new Audio();
     let i = 0;
@@ -373,7 +390,8 @@ function matchHud() {
       $("fClock").textContent = $("mClock").textContent;
       $("fScore").innerHTML = $("mScore").innerHTML;
     },
-    feedLine: (m: number, txt: string, goal = false) => {
+    feedLine: (m: number, txt: string, goal = false, voice?: string) => {
+      if (voice) say(voice);
       const li = document.createElement("li");
       li.className = goal ? "goal" : "";
       li.innerHTML = `<b>${Math.floor(m)}'</b> ${txt}`;
@@ -547,6 +565,31 @@ function postMatch(r: MatchResult, title: string, extra = "") {
 }
 
 // ---------------------------------------------------------------- story flow
+const SCOUT_OFFERS = [
+  { id: "ceari", scout: "Wagner Lima", salary: 400, trust: 35, pitch: "Time de raça e torcida apaixonada. Mais chances de jogar logo." },
+  { id: "tubaroes", scout: "Célia Ramos", salary: 450, trust: 30, pitch: "Estádio sempre cheio no Porto Norte. Equilíbrio entre salário e minutos." },
+  { id: "operario", scout: "Beto Farias", salary: 550, trust: 20, pitch: "O time mais forte da Série B. Melhor salário, mas a vaga é disputada." },
+];
+function chooseClub() {
+  return new Promise<(typeof SCOUT_OFFERS)[number]>((resolve) => {
+    const body = document.createElement("div");
+    body.className = "offers";
+    body.innerHTML = '<p class="muted">Três olheiros querem você. Para qual time você vai?</p>';
+    for (const o of SCOUT_OFFERS) {
+      const c = club(o.id);
+      const b = document.createElement("button");
+      b.className = "offer";
+      b.innerHTML = `<div class="badge" style="--c1:${hex(c.c1)};--c2:${hex(c.c2)}">${c.short}</div><div><b>${c.name}</b><small>Olheiro: ${o.scout} • ${c.city}</small><small>${o.pitch}</small><small>💰 ${money(o.salary)}/semana • 💪 força ${c.strength}</small></div>`;
+      b.onclick = () => {
+        closeModal();
+        resolve(o);
+      };
+      body.appendChild(b);
+    }
+    modal("Escolha seu clube", body, []);
+  });
+}
+
 async function prologue() {
   s = C.newSave();
   await dialogue(S.PROLOGUE, "varzea");
@@ -560,16 +603,19 @@ async function prologue() {
   s.fans += 20 + r.goals * 40;
   await postMatch(r, r.score[0] > r.score[1] ? "Campeões da Várzea!" : "Fim da final");
   await dialogue(r.rating >= 6.8 ? S.SCOUT_GOOD : S.SCOUT_OK, "varzea");
-  // first professional contract
-  s.contract = { clubId: "ceari", salary: 400, weeksLeft: C.SEASON_WEEKS * 2, role: "reserva" };
-  s.coachTrust = 35;
+  // three scouts → the player picks the club
+  const pick = await chooseClub();
+  s.contract = { clubId: pick.id, salary: pick.salary, weeksLeft: C.SEASON_WEEKS * 2, role: "reserva" };
+  s.coachTrust = pick.trust;
   s.story = 1;
-  s.log.unshift("Assinou o primeiro contrato profissional com o Ceari Sporting Clube.");
+  const c = club(pick.id);
+  s.log.unshift(`Assinou o primeiro contrato profissional com o ${c.name}.`);
   C.startSeason(s);
+  await dialogue(S.SIGNED, "varzea");
   await new Promise<void>((res) =>
-    modal("Contrato assinado! ✍️", `<div class="badge" style="--c1:${hex(club("ceari").c1)};--c2:${hex(club("ceari").c2)}">CEA</div><p><b>Ceari Sporting Clube</b> • Série B Nacional</p><p>Salário: <b>${money(400)}/semana</b> • ${C.SEASON_WEEKS * 2} semanas • Função: reserva</p>`, [{ t: "Bora!", fn: () => res() }])
+    modal("Contrato assinado! ✍️", `<div class="badge" style="--c1:${hex(c.c1)};--c2:${hex(c.c2)}">${c.short}</div><p><b>${c.name}</b> • Série B Nacional</p><p>Salário: <b>${money(pick.salary)}/semana</b> • ${C.SEASON_WEEKS * 2} semanas • Função: reserva</p>`, [{ t: "Bora!", fn: () => res() }])
   );
-  await dialogue(S.CEARI_WELCOME, "ceari");
+  await dialogue(S.WELCOME, "ceari");
   persist();
   hub();
 }
@@ -847,7 +893,9 @@ function timingGame(k: C.Attr) {
 }
 
 async function interview(first: boolean) {
-  const q = S.INTERVIEWS[Math.floor(Math.random() * S.INTERVIEWS.length)];
+  const qi = Math.floor(Math.random() * S.INTERVIEWS.length);
+  const q = S.INTERVIEWS[qi];
+  say("iv" + qi);
   return new Promise<void>((resolve) => {
     const body = document.createElement("div");
     body.innerHTML = `<div class="reporter">🎤 <b>TV Esporte Total</b>${first ? " — sua primeira entrevista!" : ""}</div><p class="q">“${q.q}”</p>`;
@@ -905,7 +953,9 @@ async function city() {
     { moveX: kx, moveY: ky, prompt: (v) => $("cityAsk").classList.toggle("on", v), done: () => done, status: (t) => ($("cityStatus").textContent = t) },
     async () => {
       const choice = await new Promise<"sign" | "selfie" | "skip">((resolve) => {
-        modal("Um torcedor te parou!", `<p>“${["Me dá um autógrafo, craque?!", "Tira uma foto comigo? Minha mãe não vai acreditar!", "Assina minha camisa, por favor!"][Math.floor(Math.random() * 3)]}”</p>`, [
+        const fi = Math.floor(Math.random() * 3);
+        say("cf" + fi);
+        modal("Um torcedor te parou!", `<p>“${["Me dá um autógrafo, craque?!", "Tira uma foto comigo? Minha mãe não vai acreditar!", "Assina minha camisa, por favor!"][fi]}”</p>`, [
           { t: "✍️ Autógrafo", fn: () => resolve("sign") },
           { t: "📸 Selfie", cls: "alt", fn: () => resolve("selfie") },
           { t: "Agora não", cls: "alt", fn: () => resolve("skip") },
