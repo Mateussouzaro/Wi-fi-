@@ -63,7 +63,7 @@ function setWeather(w: Weather) {
   const cfg = {
     tarde: { elev: 14, az: 230, turb: 9, ray: 2.0, sun: 2.4, sunC: 0xffd9a8, hemi: 0.75, hemiC: 0xcfe0f0, ground: 0x5a4a32, fog: 0xaeb9bd, dens: 0.0021, exp: 0.6, sea: 0x0d3a4a, storm: 0 },
     crepusculo: { elev: 3, az: 245, turb: 12, ray: 3.0, sun: 1.6, sunC: 0xff9a5a, hemi: 0.45, hemiC: 0x9fa9c9, ground: 0x3a3028, fog: 0x7d7480, dens: 0.003, exp: 0.55, sea: 0x0a2a38, storm: 0.25 },
-    tempestade: { elev: -8, az: 245, turb: 20, ray: 0.5, sun: 0.0, sunC: 0x8899bb, hemi: 0.32, hemiC: 0x55657d, ground: 0x15181c, fog: 0x161c24, dens: 0.008, exp: 0.95, sea: 0x061620, storm: 1 },
+    tempestade: { elev: -8, az: 245, turb: 20, ray: 0.5, sun: 0.0, sunC: 0x8899bb, hemi: 0.5, hemiC: 0x5d6f8a, ground: 0x15181c, fog: 0x161c24, dens: 0.008, exp: 1.1, sea: 0x061620, storm: 1 },
     amanhecer: { elev: 6, az: 100, turb: 4, ray: 2.6, sun: 2.2, sunC: 0xffc7a0, hemi: 0.7, hemiC: 0xf0d8e0, ground: 0x5a4a32, fog: 0xd9c2bb, dens: 0.0018, exp: 0.58, sea: 0x14506a, storm: 0 },
   }[w];
   const phi = THREE.MathUtils.degToRad(90 - cfg.elev),
@@ -666,6 +666,13 @@ function frame(now: number) {
     const want = head.clone().add(new THREE.Vector3(Math.sin(camYaw) * Math.cos(camPitch) * dist, Math.sin(camPitch) * dist, Math.cos(camYaw) * Math.cos(camPitch) * dist));
     if (!player.onTop && !inside) want.y = Math.max(want.y, heightAt(want.x, want.z) + 0.6);
     if (inside && !player.onTop) want.y = Math.min(want.y, heightAt(P.cave.x, P.cave.z) + 3.8);
+    // keep the camera out of buildings: pull it toward the player until it is clear
+    if (!player.onTop)
+      for (let k = 0; k < 8; k++) {
+        const hit = W.colliders.some((c) => c.hw > 1.5 && Math.abs(want.x - c.x) < c.hw + 0.2 && Math.abs(want.z - c.z) < c.hd + 0.2);
+        if (!hit) break;
+        want.lerp(head, 0.2);
+      }
     camera.position.lerp(want, Math.min(1, dt * 8));
     camera.lookAt(head);
   } else {
@@ -702,13 +709,13 @@ function frame(now: number) {
   }
   if (flash > 0) {
     flash = Math.max(0, flash - dt * 3);
-    W.hemi.intensity = 0.32 + flash * flash * 5;
+    W.hemi.intensity = 0.5 + flash * flash * 5;
     W.sky.visible = false;
-  } else if (weather === "tempestade") W.hemi.intensity = 0.32;
+  } else if (weather === "tempestade") W.hemi.intensity = 0.5;
   torch.intensity = storm > 0.5 && !player.onTop ? 60 : 0;
   // objective marker + action button
   const tp = !busy ? targetPos() : null;
-  marker.visible = !!tp && started;
+  marker.visible = !!tp && started && Math.hypot(player.pos.x - tp.x, player.pos.z - tp.z) > 9;
   if (tp) marker.position.set(tp.x, groundY(tp.x, tp.z) + 20, tp.z);
   near = null;
   if (started && !busy) {
