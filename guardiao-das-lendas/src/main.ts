@@ -114,6 +114,7 @@ interface Enemy {
   segs?: THREE.Mesh[];
   trail?: THREE.Vector3[];
   tag?: string;
+  ang?: number; // Iara's position around the island
 }
 const enemies: Enemy[] = [];
 const bodyMats = new WeakMap<Enemy, THREE.MeshStandardMaterial[]>();
@@ -1131,7 +1132,8 @@ function updateEnemy(e: Enemy, dt: number, T: number) {
     }
     case "iara": {
       // circles the island in the water; surfaces to throw water orbs
-      const a = e.t * 0.25 + e.phase;
+      // she stays put while surfaced (that's when arrows can hit), and swims while under water
+      const a = (e.ang ??= 0);
       e.pos.x = P.island.x + Math.cos(a) * 14;
       e.pos.z = P.island.z + Math.sin(a) * 14;
       face(toHero, 4);
@@ -1147,7 +1149,7 @@ function updateEnemy(e: Enemy, dt: number, T: number) {
         }
       } else if (e.state === "down") {
         e.pos.y += (-2.4 - e.pos.y) * Math.min(1, dt * 3);
-        e.phase += dt * 0.8;
+        e.ang = (e.ang ?? 0) + dt * 0.55;
         if (e.t > 2.4) {
           e.state = "up";
           e.t = 0;
@@ -1303,7 +1305,7 @@ function updateShots(dt: number) {
       for (const e of enemies) {
         if (e.dead || !e.obj.visible) continue;
         const tp = e.kind === "boitata" ? e.segs![0].getWorldPosition(V()) : e.pos;
-        if (flat(s.mesh.position, tp) < (e.kind === "boitata" ? 1.6 : e.kind === "iara" ? 1.4 : 0.9)) {
+        if (flat(s.mesh.position, tp) < (e.kind === "boitata" ? 1.6 : e.kind === "iara" ? 1.8 : 0.9)) {
           damageEnemy(e, 1, hero.pos);
           hit = true;
           break;
