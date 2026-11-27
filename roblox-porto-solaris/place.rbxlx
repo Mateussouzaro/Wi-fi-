@@ -6115,6 +6115,52 @@ task.spawn(function()
 	end
 end)
 
+-- ------------------------------------------------------------------ keep the grass under the asphalt
+-- Terrain is drawn in 4-stud voxels; on phones it is drawn even coarser, so grass whose surface sits
+-- 1 stud under a 0.2-stud road can still show through it, and the grass blades poke out of it.
+-- Under every paved surface: swap the grass for pavement (no grass blades) at the same height,
+-- and give the surface a solid base so no terrain can ever be seen through or beside it.
+do
+	local PAVED = {
+		[Enum.Material.Asphalt] = true,
+		[Enum.Material.Concrete] = true,
+		[Enum.Material.Pavement] = true,
+		[Enum.Material.Cobblestone] = true,
+		[Enum.Material.Slate] = true,
+		[Enum.Material.Brick] = true,
+	}
+	local list = {}
+	for _, p in ipairs(map:GetDescendants()) do
+		if p:IsA("Part") and p.Shape == Enum.PartType.Block and PAVED[p.Material] and p.Transparency < 1
+			and p.Size.Y <= 0.6 and p.Position.Y < 0.8 and p.Size.X * p.Size.Z >= 150 then
+			table.insert(list, p)
+		end
+	end
+	for _, p in ipairs(list) do
+		local _, ry = p.CFrame:ToEulerAnglesYXZ()
+		local flat = CFrame.new(p.Position.X, 0, p.Position.Z) * CFrame.Angles(0, ry, 0)
+		-- 2 extra studs each side, same height as the lawn around it (top at y=-1.2), so there is no ditch
+		local sx, sz = p.Size.X + 4, p.Size.Z + 4
+		T:FillBlock(flat * CFrame.new(0, 2, 0), V(sx, 12, sz), Enum.Material.Air)
+		T:FillBlock(flat * CFrame.new(0, -5.2, 0), V(sx, 8, sz), Enum.Material.Pavement)
+	end
+	for _, p in ipairs(list) do
+		local bottom = p.Position.Y - p.Size.Y / 2
+		part({
+			Name = "Base",
+			Size = V(p.Size.X, 3, p.Size.Z),
+			CFrame = p.CFrame * CFrame.new(0, bottom - p.Position.Y - 1.5 - 0.01, 0),
+			Color = p.Color:Lerp(rgb(30, 30, 30), 0.4),
+			Material = Enum.Material.Concrete,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+		})
+	end
+	print("[Porto Solaris] chão pavimentado sob", #list, "superfícies")
+end
+
 -- ------------------------------------------------------------------ day/night cycle and animations
 local DAY_LENGTH = 24 * 60 -- seconds for a full day
 local last = os.clock()
