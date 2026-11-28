@@ -13,7 +13,7 @@ local camera = workspace.CurrentCamera
 local SpawnCar = ReplicatedStorage:WaitForChild("SpawnCarBloco")
 local Notify = ReplicatedStorage:WaitForChild("Notify")
 local Progress = ReplicatedStorage:WaitForChild("Progress")
-local catalogueValue = ReplicatedStorage:WaitForChild("Catalogo")
+local catalogueValue = ReplicatedStorage:WaitForChild("CatalogoBlocos")
 local placesValue = ReplicatedStorage:WaitForChild("Lugares")
 
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end

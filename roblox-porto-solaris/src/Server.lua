@@ -239,7 +239,7 @@ local CARS = {
 local CAR_BY_ID = {}
 for _, c in ipairs(CARS) do CAR_BY_ID[c.id] = c end
 local catalogue = Instance.new("StringValue")
-catalogue.Name = "Catalogo"
+catalogue.Name = "CatalogoBlocos" -- (not "Catalogo": that is the dealership ModuleScript)
 do
 	local ids = {}
 	for _, c in ipairs(CARS) do

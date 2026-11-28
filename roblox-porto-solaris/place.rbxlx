@@ -5168,7 +5168,7 @@ local CARS = {
 local CAR_BY_ID = {}
 for _, c in ipairs(CARS) do CAR_BY_ID[c.id] = c end
 local catalogue = Instance.new("StringValue")
-catalogue.Name = "Catalogo"
+catalogue.Name = "CatalogoBlocos" -- (not "Catalogo": that is the dealership ModuleScript)
 do
 	local ids = {}
 	for _, c in ipairs(CARS) do
@@ -8234,7 +8234,7 @@ local camera = workspace.CurrentCamera
 local SpawnCar = ReplicatedStorage:WaitForChild("SpawnCarBloco")
 local Notify = ReplicatedStorage:WaitForChild("Notify")
 local Progress = ReplicatedStorage:WaitForChild("Progress")
-local catalogueValue = ReplicatedStorage:WaitForChild("Catalogo")
+local catalogueValue = ReplicatedStorage:WaitForChild("CatalogoBlocos")
 local placesValue = ReplicatedStorage:WaitForChild("Lugares")
 
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
