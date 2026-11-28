@@ -85,17 +85,20 @@ RunService.Stepped:Connect(function(t, dt)
 			local pose = POSES[lastKind[char] or ""]
 			local b = blend[char] or 0
 			b = math.clamp(b + (active and dt * 3 or -dt * 4), 0, 1)
-			blend[char] = b
+			blend[char] = (b > 0 or active) and b or nil -- (no entry for characters that never pose)
 			if pose and (b > 0 or not active) then
 				local joints = cache[char]
 				if not joints or not joints.root then
 					joints = findJoints(char)
 					cache[char] = joints
 				end
-				for key, rot in pairs(pose) do
+				-- every joint is written (identity where the pose says nothing), so switching
+				-- poses directly never leaves a bent knee behind; blending starts from what the
+				-- animations wrote this frame
+				for key in pairs(JOINTS) do
 					local m = joints[key]
 					if m and m.Parent then
-						m.Transform = CFrame.identity:Lerp(toTransform(m, rot), b)
+						m.Transform = m.Transform:Lerp(toTransform(m, pose[key] or CFrame.identity), b)
 					end
 				end
 				if lastKind[char] == "flutuar" and joints.root then

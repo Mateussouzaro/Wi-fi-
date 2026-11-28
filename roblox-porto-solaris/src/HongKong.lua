@@ -517,6 +517,82 @@ return function(ctx)
 		local folder = Instance.new("Folder")
 		folder.Name = "Transito"
 		folder.Parent = workspace
+		-- everything welded to one anchored root: the clients move a single part per vehicle
+		local function rig(m, root)
+			for _, p in ipairs(m:GetDescendants()) do
+				if p:IsA("BasePart") and p ~= root then
+					p.Anchored = false
+					p.Massless = true
+					p.CanCollide = false
+					p.CanQuery = false
+					p.CanTouch = false
+					local w = Instance.new("WeldConstraint")
+					w.Part0 = root
+					w.Part1 = p
+					w.Parent = p
+				end
+			end
+			root.Anchored = true
+			return m
+		end
+		-- a real 3D car from the dealership as private traffic (no scripts, random paint)
+		local function realCar(name)
+			local src = ctx.vehicles and ctx.vehicles:FindFirstChild(name)
+			if not src then return nil end
+			local m = src:Clone()
+			local seat = m:FindFirstChild("DriveSeat")
+			if not seat then m:Destroy() return nil end
+			local fwd = V(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
+			for _, d in ipairs(m:GetDescendants()) do
+				if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("ProximityPrompt") or d:IsA("ClickDetector")
+					or d:IsA("Constraint") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("BillboardGui")
+					or d:IsA("Light") or d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") then
+					d:Destroy()
+				elseif d:IsA("BasePart") and (d.Transparency >= 0.95 or d:FindFirstAncestor("SuspensionGeometry")) then
+					d:Destroy()
+				end
+			end
+			for _, d in ipairs(m:GetDescendants()) do
+				if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = true end
+			end
+			local right = V(-fwd.Z, 0, fwd.X)
+			local f1, f2 = ctx.extentAlong(m, fwd)
+			local r1, r2 = ctx.extentAlong(m, right)
+			local y1, y2 = ctx.extentAlong(m, V(0, 1, 0))
+			local cf = fwd * ((f1 + f2) / 2) + right * ((r1 + r2) / 2)
+			local ground = V(cf.X, y1, cf.Z)
+			local h = y2 - y1
+			local root = Instance.new("Part")
+			root.Name = "Raiz"
+			root.Size = V(r2 - r1, h, f2 - f1)
+			root.CFrame = CFrame.lookAt(ground, ground + fwd) * CFrame.new(0, h / 2, 0)
+			root.PivotOffset = CFrame.new(0, -h / 2, 0)
+			root.Transparency = 1
+			root.CanCollide = true
+			root.Parent = m
+			m.PrimaryPart = root
+			m.Name = "Carro"
+			ctx.Catalogo.pintar(m, math.random(1, #ctx.Catalogo.CORES))
+			return rig(m, root)
+		end
+		-- a closed lane loop along a straight road: out on the left lane, U-turn, back on the other side
+		local function uLoop(a, b, lane)
+			local A, B = V(a[1], 0, a[2]), V(b[1], 0, b[2])
+			local d = (B - A).Unit
+			local L = V(d.Z, 0, -d.X)
+			local pts = {}
+			local function add(p) table.insert(pts, { math.floor(p.X * 10 + 0.5) / 10, math.floor(p.Z * 10 + 0.5) / 10 }) end
+			add(A + L * lane)
+			for k = 0, 6 do
+				local t = k / 6 * math.pi
+				add(B + (L * math.cos(t) + d * math.sin(t)) * lane)
+			end
+			for k = 0, 6 do
+				local t = k / 6 * math.pi
+				add(A + (-L * math.cos(t) - d * math.sin(t)) * lane)
+			end
+			return pts
+		end
 		-- a vehicle is a model built around its origin, facing -Z, wheels on y = 0
 		local function vehicle(kind)
 			local m = Instance.new("Model")
@@ -537,20 +613,53 @@ return function(ctx)
 			local function wheels(halfW, zs, r)
 				for _, z in ipairs(zs) do
 					for _, s in ipairs({ -1, 1 }) do
-						add(V(0.9, r * 2, r * 2), V(s * halfW, r, z), rgb(20, 20, 20), Enum.Material.SmoothPlastic, { Shape = Enum.PartType.Cylinder, CanCollide = false })
+						add(V(0.9, r * 2, r * 2), V(s * halfW, r, z), rgb(24, 24, 24), Enum.Material.Rubber, { Shape = Enum.PartType.Cylinder, CanCollide = false })
+						add(V(0.95, r * 1.25, r * 1.25), V(s * halfW, r, z), rgb(196, 198, 204), Enum.Material.Metal, { Shape = Enum.PartType.Cylinder, CanCollide = false, Reflectance = 0.3 })
+						add(V(1, r * 0.45, r * 0.45), V(s * halfW, r, z), rgb(60, 60, 64), Enum.Material.Metal, { Shape = Enum.PartType.Cylinder, CanCollide = false })
 					end
 				end
 			end
+			local function signText(p, face, text, color, ppS)
+				local g = Instance.new("SurfaceGui")
+				g.Face = face
+				g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+				g.PixelsPerStud = ppS or 25
+				g.LightInfluence = 0
+				g.Parent = p
+				local t = Instance.new("TextLabel")
+				t.Size = UDim2.new(1, 0, 1, 0)
+				t.BackgroundTransparency = 1
+				t.Text = text
+				t.TextScaled = true
+				t.Font = Enum.Font.GothamBlack
+				t.TextColor3 = color
+				t.Parent = g
+			end
 			local root
 			if kind == "Taxi" then
-				root = add(V(6.6, 2.4, 15), V(0, 2.2, 0), rgb(200, 25, 30), nil, { Reflectance = 0.1 })
-				add(V(6.4, 2.6, 15.02), V(0, 2.2, 0), rgb(205, 205, 210), nil, { Size = V(6.62, 1, 15.02), CFrame = CFrame.new(0, 1.2, 0) })
-				add(V(5.8, 2.2, 7.5), V(0, 4.5, 0.6), rgb(30, 36, 44), Enum.Material.Glass, { Transparency = 0.2 })
-				add(V(5.6, 0.3, 6), V(0, 5.7, 0.6), rgb(200, 25, 30))
-				add(V(2, 0.8, 1), V(0, 6.2, 0.6), rgb(255, 240, 200), Enum.Material.Neon)
+				-- Hong Kong urban taxi: red body, silver roof, TAXI sign
+				local red, silver = rgb(196, 22, 30), rgb(206, 208, 214)
+				root = add(V(6.6, 2, 15), V(0, 2.3, 0), red, nil, { Reflectance = 0.12 })
+				add(V(6.62, 0.9, 15.02), V(0, 1.15, 0), rgb(40, 40, 44))
+				add(V(6.3, 0.9, 3.6), V(0, 3.6, -5.6), red, nil, { Reflectance = 0.12 }) -- bonnet
+				add(V(6.3, 0.9, 2.8), V(0, 3.6, 6.1), red, nil, { Reflectance = 0.12 }) -- boot
+				add(V(6, 2.3, 7.6), V(0, 4.75, 0.3), rgb(28, 34, 42), Enum.Material.Glass, { Transparency = 0.15, Reflectance = 0.2 })
+				add(V(6.1, 0.35, 6.4), V(0, 6.05, 0.4), silver, nil, { Reflectance = 0.15 })
+				for _, x in ipairs({ -2.95, 2.95 }) do
+					for _, z in ipairs({ -3.4, 0.3, 4 }) do add(V(0.25, 2.3, 0.4), V(x, 4.75, z), silver) end
+					add(V(0.6, 0.4, 0.7), V(x * 1.12, 4.1, -3.4), red) -- mirrors
+				end
+				local sign = add(V(2.4, 0.9, 1), V(0, 6.65, 0.4), rgb(255, 245, 210), Enum.Material.Neon, { CanCollide = false })
+				signText(sign, Enum.NormalId.Front, "TAXI", rgb(180, 20, 20), 40)
+				signText(sign, Enum.NormalId.Back, "的士", rgb(180, 20, 20), 40)
+				for _, z in ipairs({ -7.65, 7.65 }) do
+					add(V(6.4, 0.7, 0.4), V(0, 1.7, z), rgb(200, 200, 205), Enum.Material.Metal) -- bumpers
+					local plate = add(V(2.2, 0.6, 0.1), V(0, 2.4, z * 1.006), rgb(250, 220, 60), nil, { CanCollide = false })
+					local _ = plate
+				end
 				for _, s in ipairs({ -1, 1 }) do
-					add(V(1.4, 0.5, 0.2), V(s * 2.3, 2.6, -7.55), rgb(255, 250, 230), Enum.Material.Neon, { CanCollide = false })
-					add(V(1.4, 0.5, 0.2), V(s * 2.3, 2.6, 7.55), rgb(255, 30, 40), Enum.Material.Neon, { CanCollide = false })
+					add(V(1.5, 0.5, 0.2), V(s * 2.3, 2.9, -7.55), rgb(255, 250, 230), Enum.Material.Neon, { CanCollide = false })
+					add(V(1.5, 0.5, 0.2), V(s * 2.3, 2.9, 7.55), rgb(255, 30, 40), Enum.Material.Neon, { CanCollide = false })
 				end
 				wheels(3.1, { -4.8, 4.8 }, 1.3)
 			elseif kind == "Onibus" then
@@ -558,6 +667,14 @@ return function(ctx)
 				local c1 = ({ rgb(240, 200, 30), rgb(230, 70, 40), rgb(30, 120, 80) })[math.random(1, 3)]
 				root = add(V(8.4, 7, 34), V(0, 4.6, 0), c1)
 				add(V(8.42, 6.4, 34.02), V(0, 11.3, 0), rgb(245, 245, 240))
+				add(V(8.44, 0.6, 34.04), V(0, 8.2, 0), rgb(30, 30, 34)) -- livery band between decks
+				add(V(8.44, 0.8, 34.04), V(0, 1.6, 0), rgb(40, 40, 44)) -- skirt
+				add(V(8.1, 0.5, 33.6), V(0, 14.75, 0), rgb(230, 230, 226)) -- roof
+				local ad = add(V(0.2, 3.2, 14), V(4.26, 5.6, 4), rgb(20, 40, 80), nil, { CanCollide = false })
+				signText(ad, Enum.NormalId.Right, "PORTO SOLARIS • CAR MEET", rgb(255, 200, 60), 20)
+				local ad2 = add(V(0.2, 3.2, 14), V(-4.26, 5.6, 4), rgb(20, 40, 80), nil, { CanCollide = false })
+				signText(ad2, Enum.NormalId.Left, "PORTO SOLARIS • CAR MEET", rgb(255, 200, 60), 20)
+				add(V(8.2, 0.5, 0.6), V(0, 1.6, -17.2), rgb(60, 60, 64), Enum.Material.Metal) -- bumper
 				for _, y in ipairs({ 5.6, 11.8 }) do
 					add(V(8.5, 2.6, 30), V(0, y, 0.5), rgb(30, 40, 50), Enum.Material.Glass, { Transparency = 0.15, CanCollide = false })
 				end
@@ -617,7 +734,7 @@ return function(ctx)
 			m.PrimaryPart = root
 			-- the model's pivot is its origin on the ground (wheels at y = 0)
 			root.PivotOffset = root.CFrame:Inverse()
-			return m
+			return rig(m, root)
 		end
 		local function route(m, pts, speed, opts)
 			opts = opts or {}
@@ -632,17 +749,31 @@ return function(ctx)
 			m:PivotTo(CFrame.new(pts[1][1], opts.y or 0, pts[1][2]))
 			m.Parent = folder
 		end
+		local REAL = { "Brava Hellstar", "Kaiser Roadster", "Superbo", "Brava Charger Wide", "Toro SUV", "Aurion B9" }
+		local realN = 0
+		local function spawnKind(k)
+			if k == "Carro" then
+				realN = realN + 1
+				return realCar(REAL[(realN - 1) % #REAL + 1]) or vehicle("Taxi")
+			end
+			return vehicle(k)
+		end
+		local function fleet(kinds, pts, speeds, opts)
+			for i, k in ipairs(kinds) do
+				local o = { fase = (i - 1) / #kinds + math.random() * 0.02, faixa = opts.faixa }
+				route(spawnKind(k), pts, speeds[k] or 60, o)
+			end
+		end
+		local SPEED = { Taxi = 62, Carro = 70, Onibus = 42, Microonibus = 55 }
 		-- outer highway (clockwise loop, cars keep LEFT like in Hong Kong)
-		local HWY = { { -1000, -1200 }, { 1000, -1200 }, { 1000, 270 }, { -1000, 270 } }
-		local kinds = { "Taxi", "Onibus", "Taxi", "Microonibus", "Taxi", "Onibus", "Taxi", "Taxi" }
-		for i, k in ipairs(kinds) do
-			route(vehicle(k), HWY, k == "Onibus" and 45 or 70, { fase = (i - 1) / #kinds, faixa = 7 })
-		end
+		fleet({ "Taxi", "Onibus", "Carro", "Taxi", "Microonibus", "Carro", "Taxi", "Onibus", "Carro", "Taxi", "Microonibus", "Onibus" },
+			{ { -1000, -1200 }, { 1000, -1200 }, { 1000, 270 }, { -1000, 270 } }, SPEED, { faixa = 7 })
 		-- cross avenue and the z=90 road (loop through the outer highway ends)
-		local CROSS = { { -1000, -140 }, { 1000, -140 }, { 1000, 90 }, { -1000, 90 } }
-		for i, k in ipairs({ "Taxi", "Microonibus", "Taxi", "Onibus", "Taxi" }) do
-			route(vehicle(k), CROSS, k == "Onibus" and 40 or 55, { fase = (i - 1) / 5, faixa = 8 })
-		end
+		fleet({ "Taxi", "Carro", "Onibus", "Carro", "Taxi", "Microonibus", "Carro", "Onibus" },
+			{ { -1000, -140 }, { 1000, -140 }, { 1000, 90 }, { -1000, 90 } }, { Taxi = 50, Carro = 55, Onibus = 38, Microonibus = 46 }, { faixa = 8 })
+		-- central avenue (no double-deckers: the footbridges are low) and Mong Kok street, with U-turns at the ends
+		fleet({ "Taxi", "Carro", "Taxi", "Carro", "Microonibus", "Carro" }, uLoop({ 0, -490 }, { 0, 240 }, 6), { Taxi = 40, Carro = 44, Microonibus = 36 }, { faixa = 0 })
+		fleet({ "Taxi", "Carro", "Microonibus", "Carro" }, uLoop({ -245, -235 }, { 245, -235 }, 5), { Taxi = 28, Carro = 30, Microonibus = 24 }, { faixa = 0 })
 		-- trams on their rails (back and forth)
 		for i = 0, 1 do
 			route(vehicle("Bonde"), { { -900, -140 }, { 900, -140 } }, 22, { fase = i * 0.5, faixa = 0, vaivem = true })

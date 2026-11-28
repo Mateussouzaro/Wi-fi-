@@ -160,7 +160,7 @@ end
 local BASEPART = { Part = true, WedgePart = true, CornerWedgePart = true, MeshPart = true, TrussPart = true, VehicleSeat = true, Seat = true, SpawnLocation = true, UnionOperation = true }
 local EVENTS = { Triggered = true, Changed = true, OnServerEvent = true, Event = true, PlayerAdded = true, PlayerRemoving = true, Heartbeat = true, Touched = true, ChildAdded = true, CharacterAdded = true, Completed = true,
 	OnClientEvent = true, MouseButton1Click = true, MouseButton1Down = true, MouseEnter = true, MouseLeave = true, InputBegan = true, InputEnded = true, InputChanged = true,
-	TouchPinch = true, RenderStepped = true, Stepped = true, DescendantAdded = true, Activated = true, FocusLost = true }
+	TouchPinch = true, RenderStepped = true, Stepped = true, DescendantAdded = true, DescendantRemoving = true, Seated = true, Activated = true, FocusLost = true }
 local Inst = {}
 local ALL = {}
 local function isA(o, c)
@@ -218,6 +218,7 @@ local function new(class)
 		o._p.Material = "Material.Plastic"
 		o._p.Anchored = false
 		o._p.CanCollide = true
+		o._p.AssemblyLinearVelocity = v3(0, 0, 0)
 		if class == "Part" then o._p.Shape = "PartType.Block" end
 	end
 	if not BASEPART[class] then
@@ -308,7 +309,9 @@ function Inst.Raycast(_, origin, dir, params)
 	-- hits the top of the highest part of the filtered model below the ray
 	local best = nil
 	for _, root in ipairs(params and params.FilterDescendantsInstances or {}) do
-		for _, d in ipairs(root:GetDescendants()) do
+		local list = root:GetDescendants()
+		table.insert(list, root)
+		for _, d in ipairs(list) do
 			if isA(d, "BasePart") then
 				local cfp, s = d.CFrame.p, d.Size
 				if math.abs(origin.X - cfp.X) <= s.X / 2 and math.abs(origin.Z - cfp.Z) <= s.Z / 2 then
@@ -321,6 +324,8 @@ function Inst.Raycast(_, origin, dir, params)
 	return best and { Position = v3(origin.X, best, origin.Z) } or nil
 end
 function Inst.GetServerTimeNow() return MOCK_TIME or 0 end
+function Inst.FindFirstAncestorOfClass(o, cl) local p = o.Parent while p do if p.ClassName == cl then return p end p = p.Parent end return nil end
+function Inst.FindFirstAncestor(o, name) local p = o.Parent while p do if p.Name == name then return p end p = p.Parent end return nil end
 function Inst.IsDescendantOf(o, a) local p = o.Parent while p do if p == a then return true end p = p.Parent end return false end
 function Inst.FireClient() end
 function Inst.FireAllClients() end

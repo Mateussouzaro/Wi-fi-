@@ -15,7 +15,9 @@ local hum = Instance.new("Humanoid", char) hum.Name = "Humanoid" hum.Health = 10
 local hrp = Instance.new("Part", char) hrp.Name = "HumanoidRootPart" hrp.Size = V(2, 2, 1) hrp.CFrame = CFrame.new(506, 3.1, 598)
 char.PrimaryPart = hrp
 plr.Character = char
-local function fire(kind) FIRE(pose.OnServerEvent, plr, kind) end
+local clock = 1000
+os.clock = function() return clock end
+local function fire(kind) clock = clock + 2 FIRE(pose.OnServerEvent, plr, kind) end
 fire("encostar")
 check(char:GetAttribute("Pose") == "encostar", "lean pose set")
 check(hum.PlatformStand == true, "PlatformStand on")
@@ -35,6 +37,15 @@ check(hrp:FindFirstChild("PoseAura") ~= nil, "aura particles")
 check(hrp:FindFirstChild("PoseWeld") ~= nil and char:FindFirstChildOfClass("Part") ~= nil, "float weld")
 fire(nil)
 check(char:FindFirstChild("PoseAncora") == nil and hrp:FindFirstChild("PoseAura") == nil, "float cleaned up")
+-- someone drives the car: refused; spam: refused
+seat.Occupant = Instance.new("Humanoid")
+fire("encostar")
+check(char:GetAttribute("Pose") == nil, "occupied car refused")
+seat.Occupant = nil
+fire("encostar")
+FIRE(pose.OnServerEvent, plr, "capo") -- same instant
+check(char:GetAttribute("Pose") == nil, "spam within the cooldown is ignored (and the old pose was cleared)")
+fire(nil)
 -- far from any car: refused
 hrp.CFrame = CFrame.new(5000, 3, 5000)
 fire("capo")

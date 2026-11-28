@@ -47,21 +47,55 @@ local function decode(s)
 end
 
 -- ---------------------------------------------------------------- applying (local only)
+-- Registries built once and kept up to date, so no full scans of the map while playing.
+local parts, lights, emitters = {}, {}, {}
+local function isCarPart(p)
+	-- never change car parts: their material sets their mass, i.e. how the car drives
+	if not p.Anchored then return true end
+	local m = p:FindFirstAncestorOfClass("Model")
+	return m ~= nil and m:FindFirstChild("DriveSeat") ~= nil
+end
 local original = {} -- part -> {material, reflectance}
+local SIMPLE = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+local function simplify(p)
+	if original[p] or SIMPLE[p.Material] or isCarPart(p) then return end
+	original[p] = { p.Material, p.Reflectance }
+	p.Material = Enum.Material.SmoothPlastic
+	p.Reflectance = 0
+end
+local function register(d)
+	if d:IsA("BasePart") then
+		parts[d] = true
+		if not cfg.texturas then simplify(d) end
+	elseif d:IsA("Light") then
+		lights[d] = true
+		if not cfg.luzes and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+		-- the server switches city lights at dusk: keep them off on this device if chosen
+		d:GetPropertyChangedSignal("Enabled"):Connect(function()
+			if not cfg.luzes and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+		end)
+	elseif d:IsA("ParticleEmitter") then
+		emitters[d] = true
+		if not cfg.particulas and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+	elseif (d:IsA("Decal") or d:IsA("Texture")) and not cfg.texturas then
+		if d:GetAttribute("CfgT") == nil then d:SetAttribute("CfgT", d.Transparency) end
+		d.Transparency = 1
+	end
+end
+local function unregister(d)
+	parts[d], lights[d], emitters[d], original[d] = nil, nil, nil, nil
+end
 local function setTextures(on)
+	if on then
+		for p, o in pairs(original) do
+			if p.Parent then p.Material, p.Reflectance = o[1], o[2] end
+		end
+		original = {}
+	else
+		for p in pairs(parts) do if p.Parent then simplify(p) end end
+	end
 	for _, d in ipairs(workspace:GetDescendants()) do
-		if d:IsA("BasePart") and not d:IsA("Terrain") then
-			if not on then
-				if not original[d] and d.Material ~= Enum.Material.SmoothPlastic and d.Material ~= Enum.Material.Neon and d.Material ~= Enum.Material.Glass then
-					original[d] = { d.Material, d.Reflectance }
-					d.Material = Enum.Material.SmoothPlastic
-					d.Reflectance = 0
-				end
-			elseif original[d] then
-				d.Material, d.Reflectance = original[d][1], original[d][2]
-				original[d] = nil
-			end
-		elseif d:IsA("Decal") or d:IsA("Texture") then
+		if d:IsA("Decal") or d:IsA("Texture") then
 			if not on then
 				if d:GetAttribute("CfgT") == nil then d:SetAttribute("CfgT", d.Transparency) end
 				d.Transparency = 1
@@ -71,18 +105,22 @@ local function setTextures(on)
 			end
 		end
 	end
-	if on then
-		for p, o in pairs(original) do
-			if p.Parent then p.Material, p.Reflectance = o[1], o[2] end
+end
+-- switch off (remembering what we switched off) or restore only those
+local function setGroup(group, on)
+	for d in pairs(group) do
+		if d.Parent then
+			if not on and d.Enabled then
+				d:SetAttribute("CfgOff", true)
+				d.Enabled = false
+			elseif on and d:GetAttribute("CfgOff") then
+				d:SetAttribute("CfgOff", nil)
+				d.Enabled = true
+			end
 		end
-		original = {}
 	end
 end
-local function setClass(className, on)
-	for _, d in ipairs(workspace:GetDescendants()) do
-		if d:IsA(className) then d.Enabled = on end
-	end
-end
+local applied = {}
 local function apply()
 	for _, e in ipairs(Lighting:GetChildren()) do
 		if e:IsA("PostEffect") then e.Enabled = cfg.efeitos end
@@ -92,28 +130,18 @@ local function apply()
 		end
 	end
 	Lighting.GlobalShadows = cfg.sombras
-	setTextures(cfg.texturas)
-	if not cfg.luzes then setClass("Light", false) end
-	setClass("ParticleEmitter", cfg.particulas)
+	-- only the expensive parts that changed
+	if applied.texturas ~= cfg.texturas then setTextures(cfg.texturas) end
+	if applied.luzes ~= cfg.luzes then setGroup(lights, cfg.luzes) end
+	if applied.particulas ~= cfg.particulas then setGroup(emitters, cfg.particulas) end
+	applied.texturas, applied.luzes, applied.particulas = cfg.texturas, cfg.luzes, cfg.particulas
 	player:SetAttribute("CfgTransito", cfg.transito)
 end
--- things that appear later (spawned cars, lights switched on at night by the server)
-workspace.DescendantAdded:Connect(function(d)
-	if not cfg.texturas and d:IsA("BasePart") and d.Material ~= Enum.Material.SmoothPlastic and d.Material ~= Enum.Material.Neon and d.Material ~= Enum.Material.Glass then
-		original[d] = { d.Material, d.Reflectance }
-		d.Material = Enum.Material.SmoothPlastic
-	elseif not cfg.particulas and d:IsA("ParticleEmitter") then
-		d.Enabled = false
-	elseif not cfg.luzes and d:IsA("Light") then
-		d.Enabled = false
-	end
-end)
-task.spawn(function()
-	while true do
-		task.wait(5)
-		if not cfg.luzes then setClass("Light", false) end
-	end
-end)
+for _, d in ipairs(workspace:GetDescendants()) do register(d) end
+workspace.DescendantAdded:Connect(register)
+workspace.DescendantRemoving:Connect(unregister)
+-- (texturas/luzes/partículas start "on": nothing to restore the first time)
+applied.texturas, applied.luzes, applied.particulas = true, true, true
 
 -- ---------------------------------------------------------------- UI
 local gui = Instance.new("ScreenGui")
@@ -171,6 +199,7 @@ end
 label("CONFIGURAÇÕES", 16, 22, GOLD)
 label("Qualidade gráfica (só neste aparelho)", 50, 12, rgb(170, 175, 185))
 
+local lastApplied = nil -- the settings string last applied (sent or received)
 local presetButtons = {}
 local switchButtons = {}
 local refresh
@@ -196,7 +225,8 @@ for i, p in ipairs({ { "alta", "ALTA" }, { "media", "MÉDIA" }, { "baixa", "BAIX
 		for k, v in pairs(PRESETS[p[1]]) do cfg[k] = v end
 		apply()
 		refresh()
-		SalvarConfig:FireServer(encode())
+		lastApplied = encode()
+		SalvarConfig:FireServer(lastApplied)
 	end)
 end
 for i, k in ipairs(KEYS) do
@@ -210,7 +240,8 @@ for i, k in ipairs(KEYS) do
 		cfg.preset = "personalizada"
 		apply()
 		refresh()
-		SalvarConfig:FireServer((encode():gsub("p=personalizada", "p=c")))
+		lastApplied = (encode():gsub("p=personalizada", "p=c"))
+		SalvarConfig:FireServer(lastApplied)
 	end)
 end
 local tip = label("Dica: o menu do Roblox (☰ → Configurações) também tem\n'Qualidade gráfica' para o celular ficar mais leve.", 358, 11, rgb(150, 155, 165))
@@ -252,7 +283,6 @@ end)
 
 -- saved choice: the server publishes it as an attribute when the data loads
 -- (and again after each save, which simply re-applies the same values)
-local lastApplied = nil
 local function load()
 	local saved = player:GetAttribute("Config")
 	if saved == lastApplied and saved ~= nil then return end

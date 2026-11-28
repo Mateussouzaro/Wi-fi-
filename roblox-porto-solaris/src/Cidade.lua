@@ -156,7 +156,14 @@ RunService.RenderStepped:Connect(function()
 			-- near vehicles move every frame, far ones a few times a second (phone CPU)
 			if not mv.placed or (pivot - camPos).Magnitude < 650 or mv.frame % 15 == 0 then
 				mv.placed = true
-				m:PivotTo(placeAt(mv, now))
+				local cf = placeAt(mv, now)
+				local root = m.PrimaryPart
+				if root and root.Anchored then
+					-- one anchored root with everything welded to it: moving it moves the vehicle
+					root.CFrame = cf * root.PivotOffset:Inverse()
+				else
+					m:PivotTo(cf)
+				end
 			end
 		else
 			movers[m] = nil

@@ -5919,6 +5919,7 @@ local TweenService = game:GetService("TweenService")
 local buildPond = nil
 require(script:WaitForChild("MapaHongKong"))({
 	part = part, sign = sign, light = light, nightLights = nightLights, V = V, rgb = rgb, T = T,
+	vehicles = vehicles, extentAlong = extentAlong, Catalogo = CatalogoV,
 })
 
 -- ------------------------------------------------------------------ BEACH boulevard + pier lookout
@@ -6341,6 +6342,161 @@ Progress.OnServerEvent:Connect(function(plr, kind, value)
 	end
 end)
 
+-- ------------------------------------------------------------------ CAR POSES (lean on the car, sit on the hood, float) and saved settings
+-- The server places the character (weld to the car, so it rides along) and sets the
+-- character attribute "Pose"; every client then bends the joints (PosesCarro script).
+local PoseRemote = remote("Pose")
+local POSE_KINDS = { encostar = true, capo = true, flutuar = true }
+local poseWatch = {} -- character -> connection that ends the pose if the car gets a driver
+local poseLast = {} -- player -> os.clock() of the last request (anti-spam)
+local function clearPose(char)
+	if not char then return end
+	if poseWatch[char] then poseWatch[char]:Disconnect() poseWatch[char] = nil end
+	for _, n in ipairs({ "PoseWeld", "PoseAncora", "PoseAura" }) do
+		local o = char:FindFirstChild(n, true)
+		if o then o:Destroy() end
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and char:GetAttribute("Pose") then hum.PlatformStand = false end
+	char:SetAttribute("Pose", nil)
+end
+-- nearest car (driveable or on display) to a point
+local function nearestCar(pos, maxDist)
+	local best, bd = nil, maxDist
+	local function scan(folder)
+		for _, m in ipairs(folder:GetChildren()) do
+			if m:IsA("Model") and not m:GetAttribute("Giro") then -- (turntable cars spin on each client)
+				local seat = m:FindFirstChild("DriveSeat")
+				if seat and seat:IsA("BasePart") then
+					local cf, size = m:GetBoundingBox()
+					local d = (cf.Position - pos).Magnitude - math.max(size.X, size.Z) / 2
+					if d < bd then best, bd = m, d end
+				end
+			end
+		end
+	end
+	scan(workspace)
+	scan(map)
+	return best
+end
+PoseRemote.OnServerEvent:Connect(function(plr, kind)
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	clearPose(char)
+	if kind == nil or not POSE_KINDS[kind] or not (hum and hrp) or hum.Health <= 0 or hum.SeatPart then return end
+	local now = os.clock()
+	if poseLast[plr] and now - poseLast[plr] < 1.2 then return end
+	poseLast[plr] = now
+	local target, weldTo
+	if kind == "flutuar" then
+		-- only from the ground (no climbing by floating again and again)
+		if hum.FloorMaterial == Enum.Material.Air then return end
+		local anchor = Instance.new("Part")
+		anchor.Name = "PoseAncora"
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.CanQuery = false
+		anchor.Transparency = 1
+		anchor.Size = V(1, 1, 1)
+		target = CFrame.new(hrp.Position + V(0, 3, 0)) * (hrp.CFrame - hrp.Position)
+		anchor.CFrame = target
+		anchor.Parent = char
+		weldTo = anchor
+		local att = Instance.new("Attachment")
+		att.Name = "PoseAura"
+		att.Position = V(0, -1.5, 0)
+		att.Parent = hrp
+		local pe = Instance.new("ParticleEmitter")
+		pe.Color = ColorSequence.new(rgb(140, 210, 255), rgb(255, 200, 255))
+		pe.LightEmission = 1
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+		pe.Rate = 14
+		pe.Lifetime = NumberRange.new(1, 1.8)
+		pe.Speed = NumberRange.new(0.5, 1.5)
+		pe.SpreadAngle = Vector2.new(180, 180)
+		pe.Acceleration = V(0, 1.5, 0)
+		pe.Parent = att
+	else
+		local car = nearestCar(hrp.Position, 14)
+		if not car then
+			Notify:FireClient(plr, "semcarro")
+			return
+		end
+		local seat = car:FindFirstChild("DriveSeat")
+		-- not on a car someone drives, someone else's car, or a moving car
+		local owner = car:GetAttribute("Dono")
+		if (seat:IsA("VehicleSeat") and seat.Occupant) or (owner ~= nil and owner ~= plr.UserId) or seat.AssemblyLinearVelocity.Magnitude > 2 then
+			Notify:FireClient(plr, "carroocupado")
+			return
+		end
+		local fwd = V(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
+		local right = V(-fwd.Z, 0, fwd.X)
+		local f1, f2 = extentAlong(car, fwd)
+		local r1, r2 = extentAlong(car, right)
+		local centre = car:GetBoundingBox().Position
+		local cF, cR = (f1 + f2) / 2, (r1 + r2) / 2
+		local base = centre - fwd * (centre:Dot(fwd) - cF) - right * (centre:Dot(right) - cR)
+		if kind == "encostar" then
+			-- standing against the side nearest to the player, facing away from the car
+			local side = ((hrp.Position - base):Dot(right) >= 0) and 1 or -1
+			local p = base + right * (side * ((r2 - r1) / 2 + 1.1)) + fwd * ((f2 - f1) * 0.08)
+			target = CFrame.lookAt(V(p.X, hrp.Position.Y, p.Z), V(p.X, hrp.Position.Y, p.Z) + right * side)
+		else
+			-- sitting on the hood (front part of the car), legs over the front
+			local p = base + fwd * ((f2 - f1) * 0.3)
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			local visible = {}
+			for _, d in ipairs(car:GetDescendants()) do
+				if d:IsA("BasePart") and d.Transparency < 0.95 then table.insert(visible, d) end
+			end
+			params.FilterDescendantsInstances = visible
+			local hit = workspace:Raycast(V(p.X, centre.Y + 20, p.Z), V(0, -40, 0), params)
+			local y = hit and hit.Position.Y or (centre.Y + 1)
+			target = CFrame.lookAt(V(p.X, y + 1.1, p.Z), V(p.X, y + 1.1, p.Z) + fwd)
+		end
+		weldTo = seat
+	end
+	hum.PlatformStand = true
+	hum.Sit = false
+	char:PivotTo(target)
+	local w = Instance.new("WeldConstraint")
+	w.Name = "PoseWeld"
+	w.Part0 = hrp
+	w.Part1 = weldTo
+	w.Parent = hrp
+	char:SetAttribute("Pose", kind)
+	-- someone takes the wheel of that car: the pose ends
+	if weldTo:IsA("VehicleSeat") then
+		poseWatch[char] = weldTo:GetPropertyChangedSignal("Occupant"):Connect(function() clearPose(char) end)
+	end
+end)
+-- sitting anywhere (seat touched, ENTRAR, garage pick-up) ends a pose
+local function watchSeat(char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if hum then
+		hum.Seated:Connect(function(active) if active then clearPose(char) end end)
+	end
+end
+Players.PlayerAdded:Connect(function(plr) plr.CharacterAdded:Connect(watchSeat) end)
+for _, plr in ipairs(Players:GetPlayers()) do
+	plr.CharacterAdded:Connect(watchSeat)
+	if plr.Character then task.spawn(watchSeat, plr.Character) end
+end
+Players.PlayerRemoving:Connect(function(plr) poseLast[plr] = nil end)
+
+-- graphics settings chosen in the game (saved with the player's data)
+local SalvarConfig = remote("SalvarConfig")
+SalvarConfig.OnServerEvent:Connect(function(plr, cfg)
+	local d = data[plr]
+	if not d or type(cfg) ~= "string" or #cfg > 120 or not string.match(cfg, "^[%w=;]*$") then return end
+	d.config = cfg
+	plr:SetAttribute("Config", cfg)
+	save(plr)
+end)
+
 -- ------------------------------------------------------------------ DEALERSHIP: purchases, saved paint, garage pick-up
 -- All money checks happen here (never on the client). The FORTUNE spawner (the garage
 -- in the top bar) asks PodeSpawnar before spawning and reports each spawned car to
@@ -6461,6 +6617,7 @@ Dirigir.OnServerInvoke = function(plr, nome)
 		if weld then weld:Destroy() end
 		task.wait(0.2)
 	end
+	clearPose(char)
 	local before = char:GetPivot()
 	char:PivotTo(EXIT)
 	task.wait(0.15)
@@ -6473,126 +6630,6 @@ Dirigir.OnServerInvoke = function(plr, nome)
 	end
 	return true
 end
-
--- ------------------------------------------------------------------ CAR POSES (lean on the car, sit on the hood, float) and saved settings
--- The server places the character (weld to the car, so it rides along) and sets the
--- character attribute "Pose"; every client then bends the joints (PosesCarro script).
-local PoseRemote = remote("Pose")
-local POSE_KINDS = { encostar = true, capo = true, flutuar = true }
-local function clearPose(char)
-	if not char then return end
-	for _, n in ipairs({ "PoseWeld", "PoseAncora", "PoseAura" }) do
-		local o = char:FindFirstChild(n, true)
-		if o then o:Destroy() end
-	end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum and char:GetAttribute("Pose") then hum.PlatformStand = false end
-	char:SetAttribute("Pose", nil)
-end
--- nearest car (driveable or on display) to a point
-local function nearestCar(pos, maxDist)
-	local best, bd = nil, maxDist
-	local function scan(folder)
-		for _, m in ipairs(folder:GetChildren()) do
-			if m:IsA("Model") then
-				local seat = m:FindFirstChild("DriveSeat")
-				if seat and seat:IsA("BasePart") then
-					local cf, size = m:GetBoundingBox()
-					local d = (cf.Position - pos).Magnitude - math.max(size.X, size.Z) / 2
-					if d < bd then best, bd = m, d end
-				end
-			end
-		end
-	end
-	scan(workspace)
-	scan(map)
-	return best
-end
-PoseRemote.OnServerEvent:Connect(function(plr, kind)
-	local char = plr.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	clearPose(char)
-	if kind == nil or not POSE_KINDS[kind] or not (hum and hrp) or hum.Health <= 0 or hum.SeatPart then return end
-	local target, weldTo
-	if kind == "flutuar" then
-		local anchor = Instance.new("Part")
-		anchor.Name = "PoseAncora"
-		anchor.Anchored = true
-		anchor.CanCollide = false
-		anchor.CanQuery = false
-		anchor.Transparency = 1
-		anchor.Size = V(1, 1, 1)
-		target = CFrame.new(hrp.Position + V(0, 3, 0)) * (hrp.CFrame - hrp.Position)
-		anchor.CFrame = target
-		anchor.Parent = char
-		weldTo = anchor
-		local att = Instance.new("Attachment")
-		att.Name = "PoseAura"
-		att.Position = V(0, -1.5, 0)
-		att.Parent = hrp
-		local pe = Instance.new("ParticleEmitter")
-		pe.Color = ColorSequence.new(rgb(140, 210, 255), rgb(255, 200, 255))
-		pe.LightEmission = 1
-		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
-		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
-		pe.Rate = 14
-		pe.Lifetime = NumberRange.new(1, 1.8)
-		pe.Speed = NumberRange.new(0.5, 1.5)
-		pe.SpreadAngle = Vector2.new(180, 180)
-		pe.Acceleration = V(0, 1.5, 0)
-		pe.Parent = att
-	else
-		local car = nearestCar(hrp.Position, 14)
-		if not car then
-			Notify:FireClient(plr, "semcarro")
-			return
-		end
-		local seat = car:FindFirstChild("DriveSeat")
-		local fwd = V(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
-		local right = V(-fwd.Z, 0, fwd.X)
-		local f1, f2 = extentAlong(car, fwd)
-		local r1, r2 = extentAlong(car, right)
-		local centre = car:GetBoundingBox().Position
-		local cF, cR = (f1 + f2) / 2, (r1 + r2) / 2
-		local base = centre - fwd * (centre:Dot(fwd) - cF) - right * (centre:Dot(right) - cR)
-		if kind == "encostar" then
-			-- standing against the side nearest to the player, facing away from the car
-			local side = ((hrp.Position - base):Dot(right) >= 0) and 1 or -1
-			local p = base + right * (side * ((r2 - r1) / 2 + 1.1)) + fwd * ((f2 - f1) * 0.08)
-			target = CFrame.lookAt(V(p.X, hrp.Position.Y, p.Z), V(p.X, hrp.Position.Y, p.Z) + right * side)
-		else
-			-- sitting on the hood (front part of the car), legs over the front
-			local p = base + fwd * ((f2 - f1) * 0.3)
-			local params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Include
-			params.FilterDescendantsInstances = { car }
-			local hit = workspace:Raycast(V(p.X, centre.Y + 20, p.Z), V(0, -40, 0), params)
-			local y = hit and hit.Position.Y or (centre.Y + 1)
-			target = CFrame.lookAt(V(p.X, y + 1.1, p.Z), V(p.X, y + 1.1, p.Z) + fwd)
-		end
-		weldTo = seat
-	end
-	hum.PlatformStand = true
-	hum.Sit = false
-	char:PivotTo(target)
-	local w = Instance.new("WeldConstraint")
-	w.Name = "PoseWeld"
-	w.Part0 = hrp
-	w.Part1 = weldTo
-	w.Parent = hrp
-	char:SetAttribute("Pose", kind)
-end)
-
--- graphics settings chosen in the game (saved with the player's data)
-local SalvarConfig = remote("SalvarConfig")
-SalvarConfig.OnServerEvent:Connect(function(plr, cfg)
-	local d = data[plr]
-	if not d or type(cfg) ~= "string" or #cfg > 120 or not string.match(cfg, "^[%w=;]*$") then return end
-	d.config = cfg
-	plr:SetAttribute("Config", cfg)
-	save(plr)
-end)
 
 -- ENTRAR button (ControlesMobile): sit the player in a nearby car seat, checked here
 local EntrarCarro = remote("EntrarCarro")
@@ -7649,6 +7686,82 @@ return function(ctx)
 		local folder = Instance.new("Folder")
 		folder.Name = "Transito"
 		folder.Parent = workspace
+		-- everything welded to one anchored root: the clients move a single part per vehicle
+		local function rig(m, root)
+			for _, p in ipairs(m:GetDescendants()) do
+				if p:IsA("BasePart") and p ~= root then
+					p.Anchored = false
+					p.Massless = true
+					p.CanCollide = false
+					p.CanQuery = false
+					p.CanTouch = false
+					local w = Instance.new("WeldConstraint")
+					w.Part0 = root
+					w.Part1 = p
+					w.Parent = p
+				end
+			end
+			root.Anchored = true
+			return m
+		end
+		-- a real 3D car from the dealership as private traffic (no scripts, random paint)
+		local function realCar(name)
+			local src = ctx.vehicles and ctx.vehicles:FindFirstChild(name)
+			if not src then return nil end
+			local m = src:Clone()
+			local seat = m:FindFirstChild("DriveSeat")
+			if not seat then m:Destroy() return nil end
+			local fwd = V(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
+			for _, d in ipairs(m:GetDescendants()) do
+				if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("ProximityPrompt") or d:IsA("ClickDetector")
+					or d:IsA("Constraint") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("BillboardGui")
+					or d:IsA("Light") or d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") then
+					d:Destroy()
+				elseif d:IsA("BasePart") and (d.Transparency >= 0.95 or d:FindFirstAncestor("SuspensionGeometry")) then
+					d:Destroy()
+				end
+			end
+			for _, d in ipairs(m:GetDescendants()) do
+				if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = true end
+			end
+			local right = V(-fwd.Z, 0, fwd.X)
+			local f1, f2 = ctx.extentAlong(m, fwd)
+			local r1, r2 = ctx.extentAlong(m, right)
+			local y1, y2 = ctx.extentAlong(m, V(0, 1, 0))
+			local cf = fwd * ((f1 + f2) / 2) + right * ((r1 + r2) / 2)
+			local ground = V(cf.X, y1, cf.Z)
+			local h = y2 - y1
+			local root = Instance.new("Part")
+			root.Name = "Raiz"
+			root.Size = V(r2 - r1, h, f2 - f1)
+			root.CFrame = CFrame.lookAt(ground, ground + fwd) * CFrame.new(0, h / 2, 0)
+			root.PivotOffset = CFrame.new(0, -h / 2, 0)
+			root.Transparency = 1
+			root.CanCollide = true
+			root.Parent = m
+			m.PrimaryPart = root
+			m.Name = "Carro"
+			ctx.Catalogo.pintar(m, math.random(1, #ctx.Catalogo.CORES))
+			return rig(m, root)
+		end
+		-- a closed lane loop along a straight road: out on the left lane, U-turn, back on the other side
+		local function uLoop(a, b, lane)
+			local A, B = V(a[1], 0, a[2]), V(b[1], 0, b[2])
+			local d = (B - A).Unit
+			local L = V(d.Z, 0, -d.X)
+			local pts = {}
+			local function add(p) table.insert(pts, { math.floor(p.X * 10 + 0.5) / 10, math.floor(p.Z * 10 + 0.5) / 10 }) end
+			add(A + L * lane)
+			for k = 0, 6 do
+				local t = k / 6 * math.pi
+				add(B + (L * math.cos(t) + d * math.sin(t)) * lane)
+			end
+			for k = 0, 6 do
+				local t = k / 6 * math.pi
+				add(A + (-L * math.cos(t) - d * math.sin(t)) * lane)
+			end
+			return pts
+		end
 		-- a vehicle is a model built around its origin, facing -Z, wheels on y = 0
 		local function vehicle(kind)
 			local m = Instance.new("Model")
@@ -7669,20 +7782,53 @@ return function(ctx)
 			local function wheels(halfW, zs, r)
 				for _, z in ipairs(zs) do
 					for _, s in ipairs({ -1, 1 }) do
-						add(V(0.9, r * 2, r * 2), V(s * halfW, r, z), rgb(20, 20, 20), Enum.Material.SmoothPlastic, { Shape = Enum.PartType.Cylinder, CanCollide = false })
+						add(V(0.9, r * 2, r * 2), V(s * halfW, r, z), rgb(24, 24, 24), Enum.Material.Rubber, { Shape = Enum.PartType.Cylinder, CanCollide = false })
+						add(V(0.95, r * 1.25, r * 1.25), V(s * halfW, r, z), rgb(196, 198, 204), Enum.Material.Metal, { Shape = Enum.PartType.Cylinder, CanCollide = false, Reflectance = 0.3 })
+						add(V(1, r * 0.45, r * 0.45), V(s * halfW, r, z), rgb(60, 60, 64), Enum.Material.Metal, { Shape = Enum.PartType.Cylinder, CanCollide = false })
 					end
 				end
 			end
+			local function signText(p, face, text, color, ppS)
+				local g = Instance.new("SurfaceGui")
+				g.Face = face
+				g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+				g.PixelsPerStud = ppS or 25
+				g.LightInfluence = 0
+				g.Parent = p
+				local t = Instance.new("TextLabel")
+				t.Size = UDim2.new(1, 0, 1, 0)
+				t.BackgroundTransparency = 1
+				t.Text = text
+				t.TextScaled = true
+				t.Font = Enum.Font.GothamBlack
+				t.TextColor3 = color
+				t.Parent = g
+			end
 			local root
 			if kind == "Taxi" then
-				root = add(V(6.6, 2.4, 15), V(0, 2.2, 0), rgb(200, 25, 30), nil, { Reflectance = 0.1 })
-				add(V(6.4, 2.6, 15.02), V(0, 2.2, 0), rgb(205, 205, 210), nil, { Size = V(6.62, 1, 15.02), CFrame = CFrame.new(0, 1.2, 0) })
-				add(V(5.8, 2.2, 7.5), V(0, 4.5, 0.6), rgb(30, 36, 44), Enum.Material.Glass, { Transparency = 0.2 })
-				add(V(5.6, 0.3, 6), V(0, 5.7, 0.6), rgb(200, 25, 30))
-				add(V(2, 0.8, 1), V(0, 6.2, 0.6), rgb(255, 240, 200), Enum.Material.Neon)
+				-- Hong Kong urban taxi: red body, silver roof, TAXI sign
+				local red, silver = rgb(196, 22, 30), rgb(206, 208, 214)
+				root = add(V(6.6, 2, 15), V(0, 2.3, 0), red, nil, { Reflectance = 0.12 })
+				add(V(6.62, 0.9, 15.02), V(0, 1.15, 0), rgb(40, 40, 44))
+				add(V(6.3, 0.9, 3.6), V(0, 3.6, -5.6), red, nil, { Reflectance = 0.12 }) -- bonnet
+				add(V(6.3, 0.9, 2.8), V(0, 3.6, 6.1), red, nil, { Reflectance = 0.12 }) -- boot
+				add(V(6, 2.3, 7.6), V(0, 4.75, 0.3), rgb(28, 34, 42), Enum.Material.Glass, { Transparency = 0.15, Reflectance = 0.2 })
+				add(V(6.1, 0.35, 6.4), V(0, 6.05, 0.4), silver, nil, { Reflectance = 0.15 })
+				for _, x in ipairs({ -2.95, 2.95 }) do
+					for _, z in ipairs({ -3.4, 0.3, 4 }) do add(V(0.25, 2.3, 0.4), V(x, 4.75, z), silver) end
+					add(V(0.6, 0.4, 0.7), V(x * 1.12, 4.1, -3.4), red) -- mirrors
+				end
+				local sign = add(V(2.4, 0.9, 1), V(0, 6.65, 0.4), rgb(255, 245, 210), Enum.Material.Neon, { CanCollide = false })
+				signText(sign, Enum.NormalId.Front, "TAXI", rgb(180, 20, 20), 40)
+				signText(sign, Enum.NormalId.Back, "的士", rgb(180, 20, 20), 40)
+				for _, z in ipairs({ -7.65, 7.65 }) do
+					add(V(6.4, 0.7, 0.4), V(0, 1.7, z), rgb(200, 200, 205), Enum.Material.Metal) -- bumpers
+					local plate = add(V(2.2, 0.6, 0.1), V(0, 2.4, z * 1.006), rgb(250, 220, 60), nil, { CanCollide = false })
+					local _ = plate
+				end
 				for _, s in ipairs({ -1, 1 }) do
-					add(V(1.4, 0.5, 0.2), V(s * 2.3, 2.6, -7.55), rgb(255, 250, 230), Enum.Material.Neon, { CanCollide = false })
-					add(V(1.4, 0.5, 0.2), V(s * 2.3, 2.6, 7.55), rgb(255, 30, 40), Enum.Material.Neon, { CanCollide = false })
+					add(V(1.5, 0.5, 0.2), V(s * 2.3, 2.9, -7.55), rgb(255, 250, 230), Enum.Material.Neon, { CanCollide = false })
+					add(V(1.5, 0.5, 0.2), V(s * 2.3, 2.9, 7.55), rgb(255, 30, 40), Enum.Material.Neon, { CanCollide = false })
 				end
 				wheels(3.1, { -4.8, 4.8 }, 1.3)
 			elseif kind == "Onibus" then
@@ -7690,6 +7836,14 @@ return function(ctx)
 				local c1 = ({ rgb(240, 200, 30), rgb(230, 70, 40), rgb(30, 120, 80) })[math.random(1, 3)]
 				root = add(V(8.4, 7, 34), V(0, 4.6, 0), c1)
 				add(V(8.42, 6.4, 34.02), V(0, 11.3, 0), rgb(245, 245, 240))
+				add(V(8.44, 0.6, 34.04), V(0, 8.2, 0), rgb(30, 30, 34)) -- livery band between decks
+				add(V(8.44, 0.8, 34.04), V(0, 1.6, 0), rgb(40, 40, 44)) -- skirt
+				add(V(8.1, 0.5, 33.6), V(0, 14.75, 0), rgb(230, 230, 226)) -- roof
+				local ad = add(V(0.2, 3.2, 14), V(4.26, 5.6, 4), rgb(20, 40, 80), nil, { CanCollide = false })
+				signText(ad, Enum.NormalId.Right, "PORTO SOLARIS • CAR MEET", rgb(255, 200, 60), 20)
+				local ad2 = add(V(0.2, 3.2, 14), V(-4.26, 5.6, 4), rgb(20, 40, 80), nil, { CanCollide = false })
+				signText(ad2, Enum.NormalId.Left, "PORTO SOLARIS • CAR MEET", rgb(255, 200, 60), 20)
+				add(V(8.2, 0.5, 0.6), V(0, 1.6, -17.2), rgb(60, 60, 64), Enum.Material.Metal) -- bumper
 				for _, y in ipairs({ 5.6, 11.8 }) do
 					add(V(8.5, 2.6, 30), V(0, y, 0.5), rgb(30, 40, 50), Enum.Material.Glass, { Transparency = 0.15, CanCollide = false })
 				end
@@ -7749,7 +7903,7 @@ return function(ctx)
 			m.PrimaryPart = root
 			-- the model's pivot is its origin on the ground (wheels at y = 0)
 			root.PivotOffset = root.CFrame:Inverse()
-			return m
+			return rig(m, root)
 		end
 		local function route(m, pts, speed, opts)
 			opts = opts or {}
@@ -7764,17 +7918,31 @@ return function(ctx)
 			m:PivotTo(CFrame.new(pts[1][1], opts.y or 0, pts[1][2]))
 			m.Parent = folder
 		end
+		local REAL = { "Brava Hellstar", "Kaiser Roadster", "Superbo", "Brava Charger Wide", "Toro SUV", "Aurion B9" }
+		local realN = 0
+		local function spawnKind(k)
+			if k == "Carro" then
+				realN = realN + 1
+				return realCar(REAL[(realN - 1) % #REAL + 1]) or vehicle("Taxi")
+			end
+			return vehicle(k)
+		end
+		local function fleet(kinds, pts, speeds, opts)
+			for i, k in ipairs(kinds) do
+				local o = { fase = (i - 1) / #kinds + math.random() * 0.02, faixa = opts.faixa }
+				route(spawnKind(k), pts, speeds[k] or 60, o)
+			end
+		end
+		local SPEED = { Taxi = 62, Carro = 70, Onibus = 42, Microonibus = 55 }
 		-- outer highway (clockwise loop, cars keep LEFT like in Hong Kong)
-		local HWY = { { -1000, -1200 }, { 1000, -1200 }, { 1000, 270 }, { -1000, 270 } }
-		local kinds = { "Taxi", "Onibus", "Taxi", "Microonibus", "Taxi", "Onibus", "Taxi", "Taxi" }
-		for i, k in ipairs(kinds) do
-			route(vehicle(k), HWY, k == "Onibus" and 45 or 70, { fase = (i - 1) / #kinds, faixa = 7 })
-		end
+		fleet({ "Taxi", "Onibus", "Carro", "Taxi", "Microonibus", "Carro", "Taxi", "Onibus", "Carro", "Taxi", "Microonibus", "Onibus" },
+			{ { -1000, -1200 }, { 1000, -1200 }, { 1000, 270 }, { -1000, 270 } }, SPEED, { faixa = 7 })
 		-- cross avenue and the z=90 road (loop through the outer highway ends)
-		local CROSS = { { -1000, -140 }, { 1000, -140 }, { 1000, 90 }, { -1000, 90 } }
-		for i, k in ipairs({ "Taxi", "Microonibus", "Taxi", "Onibus", "Taxi" }) do
-			route(vehicle(k), CROSS, k == "Onibus" and 40 or 55, { fase = (i - 1) / 5, faixa = 8 })
-		end
+		fleet({ "Taxi", "Carro", "Onibus", "Carro", "Taxi", "Microonibus", "Carro", "Onibus" },
+			{ { -1000, -140 }, { 1000, -140 }, { 1000, 90 }, { -1000, 90 } }, { Taxi = 50, Carro = 55, Onibus = 38, Microonibus = 46 }, { faixa = 8 })
+		-- central avenue (no double-deckers: the footbridges are low) and Mong Kok street, with U-turns at the ends
+		fleet({ "Taxi", "Carro", "Taxi", "Carro", "Microonibus", "Carro" }, uLoop({ 0, -490 }, { 0, 240 }, 6), { Taxi = 40, Carro = 44, Microonibus = 36 }, { faixa = 0 })
+		fleet({ "Taxi", "Carro", "Microonibus", "Carro" }, uLoop({ -245, -235 }, { 245, -235 }, 5), { Taxi = 28, Carro = 30, Microonibus = 24 }, { faixa = 0 })
 		-- trams on their rails (back and forth)
 		for i = 0, 1 do
 			route(vehicle("Bonde"), { { -900, -140 }, { 900, -140 } }, 22, { fase = i * 0.5, faixa = 0, vaivem = true })
@@ -10229,7 +10397,14 @@ RunService.RenderStepped:Connect(function()
 			-- near vehicles move every frame, far ones a few times a second (phone CPU)
 			if not mv.placed or (pivot - camPos).Magnitude < 650 or mv.frame % 15 == 0 then
 				mv.placed = true
-				m:PivotTo(placeAt(mv, now))
+				local cf = placeAt(mv, now)
+				local root = m.PrimaryPart
+				if root and root.Anchored then
+					-- one anchored root with everything welded to it: moving it moves the vehicle
+					root.CFrame = cf * root.PivotOffset:Inverse()
+				else
+					m:PivotTo(cf)
+				end
 			end
 		else
 			movers[m] = nil
@@ -10300,21 +10475,55 @@ local function decode(s)
 end
 
 -- ---------------------------------------------------------------- applying (local only)
+-- Registries built once and kept up to date, so no full scans of the map while playing.
+local parts, lights, emitters = {}, {}, {}
+local function isCarPart(p)
+	-- never change car parts: their material sets their mass, i.e. how the car drives
+	if not p.Anchored then return true end
+	local m = p:FindFirstAncestorOfClass("Model")
+	return m ~= nil and m:FindFirstChild("DriveSeat") ~= nil
+end
 local original = {} -- part -> {material, reflectance}
+local SIMPLE = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+local function simplify(p)
+	if original[p] or SIMPLE[p.Material] or isCarPart(p) then return end
+	original[p] = { p.Material, p.Reflectance }
+	p.Material = Enum.Material.SmoothPlastic
+	p.Reflectance = 0
+end
+local function register(d)
+	if d:IsA("BasePart") then
+		parts[d] = true
+		if not cfg.texturas then simplify(d) end
+	elseif d:IsA("Light") then
+		lights[d] = true
+		if not cfg.luzes and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+		-- the server switches city lights at dusk: keep them off on this device if chosen
+		d:GetPropertyChangedSignal("Enabled"):Connect(function()
+			if not cfg.luzes and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+		end)
+	elseif d:IsA("ParticleEmitter") then
+		emitters[d] = true
+		if not cfg.particulas and d.Enabled then d:SetAttribute("CfgOff", true) d.Enabled = false end
+	elseif (d:IsA("Decal") or d:IsA("Texture")) and not cfg.texturas then
+		if d:GetAttribute("CfgT") == nil then d:SetAttribute("CfgT", d.Transparency) end
+		d.Transparency = 1
+	end
+end
+local function unregister(d)
+	parts[d], lights[d], emitters[d], original[d] = nil, nil, nil, nil
+end
 local function setTextures(on)
+	if on then
+		for p, o in pairs(original) do
+			if p.Parent then p.Material, p.Reflectance = o[1], o[2] end
+		end
+		original = {}
+	else
+		for p in pairs(parts) do if p.Parent then simplify(p) end end
+	end
 	for _, d in ipairs(workspace:GetDescendants()) do
-		if d:IsA("BasePart") and not d:IsA("Terrain") then
-			if not on then
-				if not original[d] and d.Material ~= Enum.Material.SmoothPlastic and d.Material ~= Enum.Material.Neon and d.Material ~= Enum.Material.Glass then
-					original[d] = { d.Material, d.Reflectance }
-					d.Material = Enum.Material.SmoothPlastic
-					d.Reflectance = 0
-				end
-			elseif original[d] then
-				d.Material, d.Reflectance = original[d][1], original[d][2]
-				original[d] = nil
-			end
-		elseif d:IsA("Decal") or d:IsA("Texture") then
+		if d:IsA("Decal") or d:IsA("Texture") then
 			if not on then
 				if d:GetAttribute("CfgT") == nil then d:SetAttribute("CfgT", d.Transparency) end
 				d.Transparency = 1
@@ -10324,18 +10533,22 @@ local function setTextures(on)
 			end
 		end
 	end
-	if on then
-		for p, o in pairs(original) do
-			if p.Parent then p.Material, p.Reflectance = o[1], o[2] end
+end
+-- switch off (remembering what we switched off) or restore only those
+local function setGroup(group, on)
+	for d in pairs(group) do
+		if d.Parent then
+			if not on and d.Enabled then
+				d:SetAttribute("CfgOff", true)
+				d.Enabled = false
+			elseif on and d:GetAttribute("CfgOff") then
+				d:SetAttribute("CfgOff", nil)
+				d.Enabled = true
+			end
 		end
-		original = {}
 	end
 end
-local function setClass(className, on)
-	for _, d in ipairs(workspace:GetDescendants()) do
-		if d:IsA(className) then d.Enabled = on end
-	end
-end
+local applied = {}
 local function apply()
 	for _, e in ipairs(Lighting:GetChildren()) do
 		if e:IsA("PostEffect") then e.Enabled = cfg.efeitos end
@@ -10345,28 +10558,18 @@ local function apply()
 		end
 	end
 	Lighting.GlobalShadows = cfg.sombras
-	setTextures(cfg.texturas)
-	if not cfg.luzes then setClass("Light", false) end
-	setClass("ParticleEmitter", cfg.particulas)
+	-- only the expensive parts that changed
+	if applied.texturas ~= cfg.texturas then setTextures(cfg.texturas) end
+	if applied.luzes ~= cfg.luzes then setGroup(lights, cfg.luzes) end
+	if applied.particulas ~= cfg.particulas then setGroup(emitters, cfg.particulas) end
+	applied.texturas, applied.luzes, applied.particulas = cfg.texturas, cfg.luzes, cfg.particulas
 	player:SetAttribute("CfgTransito", cfg.transito)
 end
--- things that appear later (spawned cars, lights switched on at night by the server)
-workspace.DescendantAdded:Connect(function(d)
-	if not cfg.texturas and d:IsA("BasePart") and d.Material ~= Enum.Material.SmoothPlastic and d.Material ~= Enum.Material.Neon and d.Material ~= Enum.Material.Glass then
-		original[d] = { d.Material, d.Reflectance }
-		d.Material = Enum.Material.SmoothPlastic
-	elseif not cfg.particulas and d:IsA("ParticleEmitter") then
-		d.Enabled = false
-	elseif not cfg.luzes and d:IsA("Light") then
-		d.Enabled = false
-	end
-end)
-task.spawn(function()
-	while true do
-		task.wait(5)
-		if not cfg.luzes then setClass("Light", false) end
-	end
-end)
+for _, d in ipairs(workspace:GetDescendants()) do register(d) end
+workspace.DescendantAdded:Connect(register)
+workspace.DescendantRemoving:Connect(unregister)
+-- (texturas/luzes/partículas start "on": nothing to restore the first time)
+applied.texturas, applied.luzes, applied.particulas = true, true, true
 
 -- ---------------------------------------------------------------- UI
 local gui = Instance.new("ScreenGui")
@@ -10424,6 +10627,7 @@ end
 label("CONFIGURAÇÕES", 16, 22, GOLD)
 label("Qualidade gráfica (só neste aparelho)", 50, 12, rgb(170, 175, 185))
 
+local lastApplied = nil -- the settings string last applied (sent or received)
 local presetButtons = {}
 local switchButtons = {}
 local refresh
@@ -10449,7 +10653,8 @@ for i, p in ipairs({ { "alta", "ALTA" }, { "media", "MÉDIA" }, { "baixa", "BAIX
 		for k, v in pairs(PRESETS[p[1]]) do cfg[k] = v end
 		apply()
 		refresh()
-		SalvarConfig:FireServer(encode())
+		lastApplied = encode()
+		SalvarConfig:FireServer(lastApplied)
 	end)
 end
 for i, k in ipairs(KEYS) do
@@ -10463,7 +10668,8 @@ for i, k in ipairs(KEYS) do
 		cfg.preset = "personalizada"
 		apply()
 		refresh()
-		SalvarConfig:FireServer((encode():gsub("p=personalizada", "p=c")))
+		lastApplied = (encode():gsub("p=personalizada", "p=c"))
+		SalvarConfig:FireServer(lastApplied)
 	end)
 end
 local tip = label("Dica: o menu do Roblox (☰ → Configurações) também tem\n'Qualidade gráfica' para o celular ficar mais leve.", 358, 11, rgb(150, 155, 165))
@@ -10505,7 +10711,6 @@ end)
 
 -- saved choice: the server publishes it as an attribute when the data loads
 -- (and again after each save, which simply re-applies the same values)
-local lastApplied = nil
 local function load()
 	local saved = player:GetAttribute("Config")
 	if saved == lastApplied and saved ~= nil then return end
@@ -10603,17 +10808,20 @@ RunService.Stepped:Connect(function(t, dt)
 			local pose = POSES[lastKind[char] or ""]
 			local b = blend[char] or 0
 			b = math.clamp(b + (active and dt * 3 or -dt * 4), 0, 1)
-			blend[char] = b
+			blend[char] = (b > 0 or active) and b or nil -- (no entry for characters that never pose)
 			if pose and (b > 0 or not active) then
 				local joints = cache[char]
 				if not joints or not joints.root then
 					joints = findJoints(char)
 					cache[char] = joints
 				end
-				for key, rot in pairs(pose) do
+				-- every joint is written (identity where the pose says nothing), so switching
+				-- poses directly never leaves a bent knee behind; blending starts from what the
+				-- animations wrote this frame
+				for key in pairs(JOINTS) do
 					local m = joints[key]
 					if m and m.Parent then
-						m.Transform = CFrame.identity:Lerp(toTransform(m, rot), b)
+						m.Transform = m.Transform:Lerp(toTransform(m, pose[key] or CFrame.identity), b)
 					end
 				end
 				if lastKind[char] == "flutuar" and joints.root then
