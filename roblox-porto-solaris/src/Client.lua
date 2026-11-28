@@ -349,7 +349,7 @@ spawnBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ------------------------------------------------------------------ poses (built-in emotes) and photo mode
-local poseMenu = frame(gui, UDim2.new(0, 190, 0, 372), UDim2.new(1, -278, 0.5, -186), DARK, 0.1)
+local poseMenu = frame(gui, UDim2.new(0, 190, 0, 410), UDim2.new(1, -278, 0.5, -205), DARK, 0.1)
 corner(poseMenu, 14)
 poseMenu.Visible = false
 local poseLayout = Instance.new("UIListLayout")
@@ -360,15 +360,58 @@ posePad.PaddingTop = UDim.new(0, 8)
 posePad.PaddingLeft = UDim.new(0, 8)
 posePad.Parent = poseMenu
 local posed = false
-for _, e in ipairs({ { "👋 Acenar", "wave" }, { "👉 Apontar", "point" }, { "💃 Dançar", "dance" }, { "🕺 Dançar 2", "dance2" }, { "😂 Rir", "laugh" }, { "🙌 Comemorar", "cheer" } }) do
+-- free emotes: Roblox's own default emote animations (work for every player, no purchase;
+-- Humanoid:PlayEmote only plays emotes the player has equipped, so it is not used)
+local EMOTES = {
+	{ "👋 Acenar", { R15 = 507770239, R6 = 128777973 }, false },
+	{ "👉 Apontar", { R15 = 507770453, R6 = 128853357 }, false },
+	{ "💃 Dançar", { R15 = 507771019, R6 = 182435998 }, true },
+	{ "🕺 Dançar 2", { R15 = 507776043, R6 = 182491037 }, true },
+	{ "🪩 Dançar 3", { R15 = 507777268, R6 = 182491423 }, true },
+	{ "😂 Rir", { R15 = 507770818, R6 = 129423131 }, false },
+	{ "🙌 Comemorar", { R15 = 507770677, R6 = 129423030 }, false },
+}
+local emoteTrack = nil
+local function stopEmote()
+	if emoteTrack then
+		emoteTrack:Stop(0.2)
+		emoteTrack = nil
+	end
+end
+local function playEmote(ids, loop)
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return end
+	stopEmote()
+	local anim = Instance.new("Animation")
+	anim.AnimationId = "rbxassetid://" .. (hum.RigType == Enum.HumanoidRigType.R6 and ids.R6 or ids.R15)
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = hum
+	end
+	local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action
+		track.Looped = loop
+		track:Play(0.2)
+		emoteTrack = track
+		posed = true
+		-- walking or jumping stops the emote
+		local c1, c2
+		c1 = hum:GetPropertyChangedSignal("MoveDirection"):Connect(function()
+			if hum.MoveDirection.Magnitude > 0.2 and emoteTrack == track then stopEmote() end
+		end)
+		c2 = track.Stopped:Connect(function()
+			c1:Disconnect()
+			c2:Disconnect()
+		end)
+	end
+end
+for _, e in ipairs(EMOTES) do
 	local b = button(poseMenu, e[1], UDim2.new(1, -16, 0, 32), UDim2.new(0, 0, 0, 0), rgb(34, 36, 44))
 	b.TextSize = 14
 	b.MouseButton1Click:Connect(function()
-		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		if hum then
-			pcall(function() hum:PlayEmote(e[2]) end)
-			posed = true
-		end
+		playEmote(e[2], e[3])
 		poseMenu.Visible = false
 	end)
 end
@@ -389,13 +432,13 @@ do
 	local ps = Instance.new("UIScale")
 	ps.Parent = poseMenu
 	local function fitPose()
-		ps.Scale = math.clamp((camera.ViewportSize.Y - 30) / 372, 0.55, 1)
+		ps.Scale = math.clamp((camera.ViewportSize.Y - 30) / 410, 0.5, 1)
 	end
 	camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitPose)
 	fitPose()
 end
 bPose.MouseButton1Click:Connect(function()
-	if poseMenu.Visible then poseMenu.Visible = false else slideIn(poseMenu, UDim2.new(1.2, 0, 0.5, -186)) end
+	if poseMenu.Visible then poseMenu.Visible = false else slideIn(poseMenu, UDim2.new(1.2, 0, 0.5, -205)) end
 end)
 local photo = false
 local photoHint = text(gui, "📷 MODO FOTO • toque em qualquer lugar para sair", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 1, -40), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1))

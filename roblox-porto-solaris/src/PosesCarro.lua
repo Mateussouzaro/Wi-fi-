@@ -65,15 +65,25 @@ local function findJoints(char)
 	return found
 end
 
--- a rotation written in the joint's parent space becomes Transform = C0^-1 * R * C0
-local function toTransform(motor, rot)
-	local c0 = motor.C0 - motor.C0.Position
-	return c0:Inverse() * rot * c0
+-- The pose is applied to Motor6D.C0 (the joint's base), which no animation overwrites:
+-- a rotation R about the joint, written in the parent part's space, gives
+-- C0' = translation(C0) * R * rotation(C0)   (same as C0 * Transform with Q^-1 R Q).
+-- Only this device changes C0 (it is not replicated); every client poses every character.
+local function posedC0(base, rot, offset)
+	return CFrame.new(base.Position + (offset or Vector3.zero)) * rot * (base - base.Position)
 end
 
 local cache = {} -- character -> joints
+local baseC0 = {} -- motor -> original C0
 local blend = {} -- character -> 0..1 (smooth in/out)
 local lastKind = {} -- character -> pose being blended out
+
+local function restore(joints)
+	for _, m in pairs(joints) do
+		if baseC0[m] and m.Parent then m.C0 = baseC0[m] end
+		baseC0[m] = nil
+	end
+end
 
 RunService.Stepped:Connect(function(t, dt)
 	for _, plr in ipairs(Players:GetPlayers()) do
@@ -92,27 +102,40 @@ RunService.Stepped:Connect(function(t, dt)
 					joints = findJoints(char)
 					cache[char] = joints
 				end
+				local bob = nil
+				if lastKind[char] == "flutuar" then
+					bob = { off = Vector3.new(0, math.sin(t * 1.6) * 0.35 * b, 0), rot = A(0, math.sin(t * 0.5) * 0.15 * b, 0) }
+				end
 				-- every joint is written (identity where the pose says nothing), so switching
-				-- poses directly never leaves a bent knee behind; blending starts from what the
-				-- animations wrote this frame
+				-- poses directly never leaves a bent knee behind
 				for key in pairs(JOINTS) do
 					local m = joints[key]
 					if m and m.Parent then
-						m.Transform = m.Transform:Lerp(toTransform(m, pose[key] or CFrame.identity), b)
+						baseC0[m] = baseC0[m] or m.C0
+						local rot = pose[key] or CFrame.identity
+						local off = nil
+						if key == "root" and bob then
+							rot = rot * bob.rot
+							off = bob.off
+						end
+						m.C0 = baseC0[m]:Lerp(posedC0(baseC0[m], rot, off), b)
 					end
 				end
-				if lastKind[char] == "flutuar" and joints.root then
-					-- gentle bobbing and a slow sway
-					local bob = CFrame.new(0, math.sin(t * 1.6) * 0.35 * b, 0) * A(0, math.sin(t * 0.5) * 0.15 * b, 0)
-					-- (computed from scratch every frame: multiplying the previous value would accumulate)
-					joints.root.Transform = toTransform(joints.root, (pose.root or CFrame.identity) * bob)
+				if b <= 0 and not active then
+					restore(joints)
+					lastKind[char] = nil
+					blend[char] = nil
 				end
-				if b <= 0 and not active then lastKind[char] = nil blend[char] = nil end
 			end
 		end
 	end
-	for char in pairs(cache) do
-		if not char.Parent then cache[char] = nil blend[char] = nil lastKind[char] = nil end
+	for char, joints in pairs(cache) do
+		if not char.Parent then
+			for _, m in pairs(joints) do baseC0[m] = nil end
+			cache[char] = nil
+			blend[char] = nil
+			lastKind[char] = nil
+		end
 	end
 end)
 
