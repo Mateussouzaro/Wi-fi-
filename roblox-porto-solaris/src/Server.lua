@@ -31,40 +31,54 @@ carsFolder.Parent = workspace
 
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 local V = Vector3.new
-
--- ------------------------------------------------------------------ lighting
+-- ------------------------------------------------------------------ lighting (realistic look: Future lighting, humid Hong Kong haze)
 Lighting.ClockTime = 15.5
-Lighting.Brightness = 2.6
+Lighting.GeographicLatitude = 22.3 -- Hong Kong
+Lighting.Brightness = 3
+Lighting.Ambient = rgb(38, 38, 44)
+Lighting.OutdoorAmbient = rgb(128, 128, 138)
 Lighting.EnvironmentDiffuseScale = 1
-Lighting.EnvironmentSpecularScale = 1
+Lighting.EnvironmentSpecularScale = 1 -- glossy car paint, glass and wet-looking stone reflect the sky
 Lighting.GlobalShadows = true
-Lighting.OutdoorAmbient = rgb(120, 120, 130)
-Lighting.ShadowSoftness = 0.25
+Lighting.ShadowSoftness = 0.12
+Lighting.ExposureCompensation = 0.15
+pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
+pcall(function() Lighting.PrioritizeLightingQuality = true end)
 local atmo = Instance.new("Atmosphere")
-atmo.Density = 0.3
-atmo.Offset = 0.1
-atmo.Color = rgb(199, 186, 170)
-atmo.Decay = rgb(106, 112, 125)
-atmo.Glare = 0.4
-atmo.Haze = 1.6
+atmo.Density = 0.34
+atmo.Offset = 0.22
+atmo.Color = rgb(205, 196, 182)
+atmo.Decay = rgb(96, 108, 124)
+atmo.Glare = 0.5
+atmo.Haze = 2.2
 atmo.Parent = Lighting
 local bloom = Instance.new("BloomEffect")
-bloom.Intensity = 0.7
-bloom.Size = 30
-bloom.Threshold = 1.1
+bloom.Intensity = 0.55
+bloom.Size = 26
+bloom.Threshold = 1.4
 bloom.Parent = Lighting
 local rays = Instance.new("SunRaysEffect")
-rays.Intensity = 0.08
-rays.Spread = 0.6
+rays.Intensity = 0.06
+rays.Spread = 0.7
 rays.Parent = Lighting
 local cc = Instance.new("ColorCorrectionEffect")
-cc.Contrast = 0.12
-cc.Saturation = 0.12
-cc.TintColor = rgb(255, 246, 236)
+cc.Contrast = 0.16
+cc.Saturation = 0.1
+cc.TintColor = rgb(255, 248, 240)
 cc.Parent = Lighting
+-- a soft focus far away, like a camera lens (the city keeps its scale)
+local dof = Instance.new("DepthOfFieldEffect")
+dof.FarIntensity = 0.12
+dof.FocusDistance = 80
+dof.InFocusRadius = 140
+dof.NearIntensity = 0
+dof.Parent = Lighting
 local sky = Instance.new("Sky")
-sky.SunAngularSize = 14
+sky.SunAngularSize = 12
+sky.MoonAngularSize = 9
+sky.StarCount = 1500
 sky.Parent = Lighting
+workspace.GlobalWind = V(5, 0, 2) -- grass, smoke and particles move with the wind
 
 -- ------------------------------------------------------------------ helpers
 local function part(p)
@@ -112,10 +126,10 @@ end
 
 -- ------------------------------------------------------------------ terrain: land, beach, sea
 local T = workspace.Terrain
-T.WaterColor = rgb(24, 110, 140)
-T.WaterReflectance = 0.6
-T.WaterTransparency = 0.6
-T.WaterWaveSize = 0.15
+T.WaterColor = rgb(28, 92, 110) -- harbour green-blue
+T.WaterReflectance = 0.75
+T.WaterTransparency = 0.45
+T.WaterWaveSize = 0.2
 T.WaterWaveSpeed = 8
 local function fill(cx, cy, cz, sx, sy, sz, mat)
 	-- split into chunks so each terrain call stays small
@@ -968,200 +982,15 @@ estudioValue.Name = "Estudio"
 estudioValue.Value = CFrame.new(STUDIO)
 estudioValue.Parent = ReplicatedStorage
 
--- ------------------------------------------------------------------ DOWNTOWN towers (north) and houses
-do
-	for i = 0, 13 do
-		for j = 0, 2 do
-			local x = -380 + i * 56 + math.random(-6, 6)
-			local z = -330 - j * 60 + math.random(-6, 6)
-			if math.abs(x) > 24 then
-				local h = 30 + math.random() * 90
-				local w = 26 + math.random() * 10
-				local tw = part({ Size = V(w, h, w), Position = V(x, h / 2, z), Color = Color3.fromHSV(0.56 + math.random() * 0.05, 0.25, 0.35 + math.random() * 0.25), Material = Enum.Material.Glass, Reflectance = 0.35 })
-				-- vertical mullions on every face
-				for m = -2, 2 do
-					for _, sg in ipairs({ -1, 1 }) do
-						part({ Size = V(0.3, h, 0.5), Position = V(x + sg * (w / 2 + 0.15), h / 2, z + m * w / 5), Color = rgb(40, 44, 50), Material = Enum.Material.Metal, CanCollide = false })
-						part({ Size = V(0.5, h, 0.3), Position = V(x + m * w / 5, h / 2, z + sg * (w / 2 + 0.15)), Color = rgb(40, 44, 50), Material = Enum.Material.Metal, CanCollide = false })
-					end
-				end
-				-- roof cap and a few lit floors at night
-				part({ Size = V(w + 0.6, 1.2, w + 0.6), Position = V(x, h + 0.6, z), Color = rgb(50, 52, 58), Material = Enum.Material.Concrete })
-				for k = 1, math.floor(h / 8) do
-					if math.random() < 0.35 then
-						local band = part({ Size = V(w + 0.1, 2.2, w + 0.1), Position = V(x, k * 8 - 3, z), Color = rgb(255, 214, 150), Material = Enum.Material.Glass, Transparency = 1, CanCollide = false })
-						table.insert(nightLights, { band = band })
-					end
-				end
-				local _ = tw
-			end
-		end
-	end
-	-- houses south-west and south-east
-	for i = 0, 9 do
-		for _, x0 in ipairs({ 230 }) do
-			local x = x0 + (i % 5) * 26
-			local z = 150 + math.floor(i / 5) * 40
-			part({ Size = V(16, 8, 14), Position = V(x, 4, z), Color = Color3.fromHSV(math.random(), 0.25, 0.92), Material = Enum.Material.Concrete })
-			part({ Size = V(17, 1, 15), Position = V(x, 8.5, z), Color = rgb(160, 80, 50), Material = Enum.Material.Slate })
-			if i % 2 == 0 then palm(x + 9, z - 9) end
-		end
-	end
-end
-
--- ------------------------------------------------------------------ DISTRITO SAKURA (Japanese-style district, west)
+-- ------------------------------------------------------------------ HONG KONG inspired city (src/HongKong.lua)
+-- Central skyline, Mong Kok, Temple Street, housing estate, Victoria Harbour, street
+-- details and the animated traffic/boats. Replaces the old downtown, houses, Sakura
+-- district and neon street.
 local TweenService = game:GetService("TweenService")
 local buildPond = nil
-do
-	local cx, cz = -300, 180
-	-- stone paving
-	-- (the koi pond at x -325..-287, z 228..252 is left open)
-	local stone = rgb(150, 146, 140)
-	part({ Size = V(220, 0.3, 118), Position = V(cx, 0.12, cz - 11), Color = stone, Material = Enum.Material.Slate })
-	part({ Size = V(85, 0.3, 22), Position = V(cx - 67.5, 0.12, cz + 59), Color = stone, Material = Enum.Material.Slate })
-	part({ Size = V(97, 0.3, 22), Position = V(cx + 61.5, 0.12, cz + 59), Color = stone, Material = Enum.Material.Slate })
-	-- main street through the district (from the ring road)
-	part({ Size = V(220, 0.32, 16), Position = V(cx, 0.14, cz), Color = rgb(70, 70, 74), Material = Enum.Material.Asphalt })
-	-- torii gate at the east entrance
-	local function torii(x, z, s)
-		local red = rgb(200, 40, 35)
-		for _, dz in ipairs({ -7 * s, 7 * s }) do
-			part({ Shape = Enum.PartType.Cylinder, Size = V(18 * s, 1.6 * s, 1.6 * s), CFrame = CFrame.new(x, 9 * s, z + dz) * CFrame.Angles(0, 0, math.rad(90)), Color = red, Material = Enum.Material.SmoothPlastic })
-			part({ Size = V(2.4 * s, 1.2 * s, 2.4 * s), Position = V(x, 0.6 * s, z + dz), Color = rgb(30, 30, 30), Material = Enum.Material.SmoothPlastic })
-		end
-		part({ Size = V(1.4 * s, 1.2 * s, 19 * s), Position = V(x, 14 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
-		part({ Size = V(2 * s, 1.4 * s, 22 * s), Position = V(x, 17.4 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
-		part({ Size = V(2.2 * s, 0.7 * s, 23 * s), Position = V(x, 18.4 * s, z), Color = rgb(25, 25, 28), Material = Enum.Material.SmoothPlastic })
-		part({ Size = V(1.2 * s, 3 * s, 1.2 * s), Position = V(x, 15.7 * s, z), Color = red, Material = Enum.Material.SmoothPlastic })
-	end
-	torii(cx + 104, cz, 1.2)
-	-- five-storey pagoda
-	local px, pz = cx - 50, cz + 62
-	part({ Size = V(30, 2, 30), Position = V(px, 1, pz), Color = rgb(120, 116, 110), Material = Enum.Material.Cobblestone })
-	local y = 2
-	for i = 0, 4 do
-		local w = 18 - i * 2.6
-		local h = 6 - i * 0.4
-		part({ Size = V(w, h, w), Position = V(px, y + h / 2, pz), Color = rgb(190, 60, 45), Material = Enum.Material.Wood })
-		local roof = part({ Size = V(w + 7, 0.8, w + 7), Position = V(px, y + h + 0.4, pz), Color = rgb(40, 44, 50), Material = Enum.Material.Slate })
-		-- curved eaves: small tilted slabs on each side
-		for k = 0, 3 do
-			local a = k * math.pi / 2
-			part({ Size = V(w + 7, 0.5, 2.5), CFrame = CFrame.new(px, y + h + 0.2, pz) * CFrame.Angles(0, a, 0) * CFrame.new(0, 0.3, (w + 7) / 2) * CFrame.Angles(math.rad(-14), 0, 0), Color = rgb(40, 44, 50), Material = Enum.Material.Slate })
-		end
-		local lan = part({ Shape = Enum.PartType.Ball, Size = V(1.4, 1.4, 1.4), Position = V(px, y + h - 0.8, pz - w / 2 - 1.2), Color = rgb(255, 180, 90), Material = Enum.Material.Neon })
-		local l = light(lan, rgb(255, 170, 90), 18, 1.5)
-		table.insert(nightLights, { l = l })
-		y = y + h + 0.8
-		local _ = roof
-	end
-	part({ Shape = Enum.PartType.Cylinder, Size = V(8, 0.6, 0.6), CFrame = CFrame.new(px, y + 4, pz) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(201, 162, 39), Material = Enum.Material.Metal })
-	-- cherry trees with falling petals
-	local function sakura(x, z)
-		local h = 7 + math.random() * 3
-		part({ Size = V(1.4, h, 1.4), CFrame = CFrame.new(x, h / 2, z) * CFrame.Angles(0, 0, math.rad(math.random(-8, 8))), Color = rgb(70, 45, 35), Material = Enum.Material.Wood })
-		local top
-		for i = 1, 5 do
-			local s = 6 + math.random() * 4
-			top = part({ Shape = Enum.PartType.Ball, Size = V(s, s, s), Position = V(x + math.random(-3, 3), h + math.random(-1, 3), z + math.random(-3, 3)), Color = Color3.fromHSV(0.93 + math.random() * 0.04, 0.25 + math.random() * 0.15, 1), Material = Enum.Material.SmoothPlastic, CanCollide = false })
-		end
-		local pe = Instance.new("ParticleEmitter")
-		pe.Color = ColorSequence.new(rgb(255, 190, 210))
-		pe.Size = NumberSequence.new(0.25)
-		pe.Rate = 4
-		pe.Lifetime = NumberRange.new(5, 8)
-		pe.Speed = NumberRange.new(0.5, 1.5)
-		pe.Acceleration = V(0.6, -1.2, 0.3)
-		pe.SpreadAngle = Vector2.new(180, 180)
-		pe.Rotation = NumberRange.new(0, 360)
-		pe.RotSpeed = NumberRange.new(-90, 90)
-		pe.LightEmission = 0.2
-		pe.Parent = top
-	end
-	for i = 0, 9 do
-		sakura(cx - 100 + i * 21, cz - 22)
-		sakura(cx - 100 + i * 21, cz + 22)
-	end
-	for i = 1, 6 do sakura(px - 22 - math.random(0, 8), pz - 14 + i * 4) end
-	-- stone lanterns (toro) along the street
-	local function toro(x, z)
-		local g = rgb(150, 148, 140)
-		part({ Size = V(2.4, 0.6, 2.4), Position = V(x, 0.4, z), Color = g, Material = Enum.Material.Slate })
-		part({ Shape = Enum.PartType.Cylinder, Size = V(3, 0.9, 0.9), CFrame = CFrame.new(x, 2.1, z) * CFrame.Angles(0, 0, math.rad(90)), Color = g, Material = Enum.Material.Slate })
-		local box = part({ Size = V(1.8, 1.6, 1.8), Position = V(x, 4.4, z), Color = rgb(255, 210, 140), Material = Enum.Material.Neon, Transparency = 0.15 })
-		part({ Size = V(3.2, 0.5, 3.2), Position = V(x, 5.4, z), Color = g, Material = Enum.Material.Slate })
-		part({ Size = V(1, 0.8, 1), Position = V(x, 6, z), Color = g, Material = Enum.Material.Slate })
-		local l = light(box, rgb(255, 190, 120), 16, 1.6)
-		table.insert(nightLights, { l = l })
-	end
-	for i = 0, 8 do
-		toro(cx - 96 + i * 24, cz - 10)
-		toro(cx - 96 + i * 24, cz + 10)
-	end
-	-- red paper lanterns strung across the street
-	for i = 0, 6 do
-		local x = cx - 80 + i * 26
-		for _, dz in ipairs({ -12, 12 }) do part({ Size = V(0.5, 12, 0.5), Position = V(x, 6, cz + dz), Color = rgb(40, 30, 25), Material = Enum.Material.Wood }) end
-		part({ Size = V(0.15, 0.15, 24), Position = V(x, 11.5, cz), Color = rgb(30, 30, 30), Material = Enum.Material.SmoothPlastic, CanCollide = false })
-		for k = -2, 2 do
-			local ln = part({ Shape = Enum.PartType.Cylinder, Size = V(1.6, 1.4, 1.4), CFrame = CFrame.new(x, 10.4, cz + k * 4.5) * CFrame.Angles(0, 0, math.rad(90)), Color = rgb(220, 40, 40), Material = Enum.Material.Neon, CanCollide = false })
-			table.insert(nightLights, { glow = ln })
-		end
-	end
-	-- little shops with curtains (noren) and glowing signs
-	local SHOPS = { { "RAMEN", rgb(230, 60, 50) }, { "SUSHI", rgb(40, 120, 200) }, { "MANGÁ", rgb(250, 160, 30) }, { "CHÁ", rgb(60, 160, 90) }, { "LAMEN", rgb(180, 60, 160) }, { "DOCES", rgb(240, 110, 150) } }
-	for i, sh in ipairs(SHOPS) do
-		for _, side in ipairs({ -1, 1 }) do
-			local x = cx - 90 + (i - 1) * 32 + (side > 0 and 14 or 0)
-			local z = cz + side * 40
-			local wall = part({ Size = V(14, 9, 12), Position = V(x, 4.5, z), Color = rgb(230, 220, 200), Material = Enum.Material.Plaster })
-			part({ Size = V(16, 1, 14), Position = V(x, 9.4, z), Color = rgb(45, 48, 55), Material = Enum.Material.Slate })
-			part({ Size = V(15, 0.5, 3), CFrame = CFrame.new(x, 7.6, z - side * 7) * CFrame.Angles(math.rad(side * 18), 0, 0), Color = rgb(45, 48, 55), Material = Enum.Material.Slate })
-			for k = -2, 2 do
-				part({ Size = V(1.6, 2.6, 0.1), Position = V(x + k * 1.7, 5.6, z - side * 6.05), Color = sh[2], Material = Enum.Material.Fabric, CanCollide = false })
-			end
-			local board = part({ Size = V(10, 2, 0.4), CFrame = CFrame.new(x, 8.2, z - side * 6.3) * CFrame.Angles(0, side > 0 and 0 or math.rad(180), 0), Color = rgb(20, 20, 22), Material = Enum.Material.SmoothPlastic })
-			sign(board, sh[1], sh[2])
-			local glow = part({ Size = V(10, 3, 0.2), Position = V(x, 3.6, z - side * 6.1), Color = rgb(255, 220, 160), Material = Enum.Material.Neon, Transparency = 0.35 })
-			table.insert(nightLights, { glow = glow })
-			local _ = wall
-		end
-	end
-	-- glowing vending machines
-	for i = 0, 3 do
-		local vm = part({ Size = V(3, 6.5, 2.4), Position = V(cx - 70 + i * 40, 3.25, cz - 14.5), Color = Color3.fromHSV(i * 0.22, 0.6, 0.9), Material = Enum.Material.SmoothPlastic })
-		local front = part({ Size = V(2.6, 4, 0.2), Position = vm.Position + V(0, 0.6, 1.25), Color = rgb(230, 240, 255), Material = Enum.Material.Neon, Transparency = 0.2 })
-		light(front, rgb(220, 235, 255), 10, 1)
-	end
-	-- koi pond beside the pagoda (real water)
-	local kx, kz = px + 44, pz - 2
-	-- the water is poured after the paving pass (end of the map), which would otherwise fill it in
-	buildPond = function()
-		T:FillBlock(CFrame.new(kx, -1.5, kz), V(38, 3, 24), Enum.Material.Air)
-		T:FillBlock(CFrame.new(kx, -3.5, kz), V(38, 1, 24), Enum.Material.Mud)
-		T:FillBlock(CFrame.new(kx, -1.6, kz), V(36, 2.4, 22), Enum.Material.Water)
-	end
-	for i = 1, 14 do
-		local a = i / 14 * math.pi * 2
-		part({ Size = V(3 + math.random() * 2, 1.4, 2.6), CFrame = CFrame.new(kx + math.cos(a) * 18, 0.4, kz + math.sin(a) * 11) * CFrame.Angles(0, a, 0), Color = rgb(110, 108, 102), Material = Enum.Material.Rock })
-	end
-	for i = 1, 7 do
-		local fish = part({ Size = V(1.6, 0.5, 0.6), Position = V(kx - 10 + i * 3, -0.9, kz + math.random(-5, 5)), Color = (i % 2 == 0) and rgb(255, 120, 30) or rgb(250, 250, 250), Material = Enum.Material.SmoothPlastic, CanCollide = false })
-		TweenService:Create(fish, TweenInfo.new(3 + math.random() * 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { CFrame = fish.CFrame * CFrame.new(math.random(-6, 6), 0, math.random(-4, 4)) * CFrame.Angles(0, math.rad(math.random(90, 270)), 0) }):Play()
-	end
-	-- red arched bridge over the pond
-	for k = -4, 4 do
-		local yy = 1.6 - (k * k) * 0.08
-		part({ Size = V(2.2, 0.5, 5), Position = V(kx + k * 2.1, yy + 0.6, kz), Color = rgb(200, 40, 35), Material = Enum.Material.Wood })
-	end
-	-- bamboo clusters
-	for i = 1, 24 do
-		local x = cx - 105 + math.random() * 8
-		local z = cz - 60 + i * 5
-		local h = 10 + math.random() * 8
-		part({ Shape = Enum.PartType.Cylinder, Size = V(h, 0.5, 0.5), CFrame = CFrame.new(x, h / 2, z) * CFrame.Angles(0, 0, math.rad(90 + math.random(-4, 4))), Color = rgb(110, 160, 60), Material = Enum.Material.SmoothPlastic })
-	end
-end
+require(script:WaitForChild("MapaHongKong"))({
+	part = part, sign = sign, light = light, nightLights = nightLights, V = V, rgb = rgb, T = T,
+})
 
 -- ------------------------------------------------------------------ BEACH boulevard + pier lookout
 do
@@ -1191,8 +1020,6 @@ do
 	clouds.Density = 0.6
 	clouds.Color = rgb(255, 245, 235)
 	clouds.Parent = workspace.Terrain
-	Lighting.ShadowSoftness = 0.18
-	Lighting.ExposureCompensation = 0.1
 	-- sidewalks with a low curb along both sides of the main roads
 	local function sidewalk(x1, z1, x2, z2, roadW)
 		local a, b = V(x1, 0, z1), V(x2, 0, z2)
@@ -1258,41 +1085,6 @@ do
 		busStop(-21, z, math.rad(-90))
 		bin(21, z + 20)
 		bench(21, z - 20, math.rad(90))
-	end
-end
-
--- ------------------------------------------------------------------ RUA NEON (between the cross avenue and downtown)
-do
-	local cz = -235
-	part({ Size = V(520, 0.25, 22), Position = V(0, 0.12, cz), Color = rgb(35, 36, 42), Material = Enum.Material.Asphalt })
-	local NEON = { rgb(255, 40, 160), rgb(40, 200, 255), rgb(170, 60, 255), rgb(255, 210, 40), rgb(60, 255, 140) }
-	local WORDS = { "KARAOKÊ", "ARCADE", "LANCHES", "TATTOO", "GAMES", "BAR 24H", "CINEMA", "PIZZA", "DJ", "SNEAKERS" }
-	for i = 0, 17 do
-		for _, side in ipairs({ -1, 1 }) do
-			local x = -250 + i * 29
-			if math.abs(x) > 18 then
-				local z = cz + side * 22
-				local h = 16 + math.random(0, 18)
-				local b = part({ Size = V(24, h, 18), Position = V(x, h / 2, z + side * 2), Color = Color3.fromHSV(0.65, 0.15, 0.18 + math.random() * 0.12), Material = Enum.Material.Concrete })
-				local col = NEON[math.random(1, #NEON)]
-				local board = part({ Size = V(14, 3.2, 0.4), CFrame = CFrame.new(x, 8 + math.random(0, 4), z - side * 7.3) * CFrame.Angles(0, side > 0 and 0 or math.rad(180), 0), Color = rgb(10, 10, 14), Material = Enum.Material.SmoothPlastic })
-				sign(board, WORDS[math.random(1, #WORDS)], col)
-				local strip = part({ Size = V(24.2, 0.4, 0.4), Position = V(x, h - 0.5, z - side * 7.2), Color = col, Material = Enum.Material.Neon })
-				local l = light(strip, col, 22, 2)
-				table.insert(nightLights, { l = l })
-				-- glowing shop front
-				local front = part({ Size = V(18, 5, 0.2), Position = V(x, 2.6, z - side * 7.1), Color = col:Lerp(rgb(255, 255, 255), 0.6), Material = Enum.Material.Neon, Transparency = 0.45 })
-				local _ = b and front
-			end
-		end
-	end
-	-- neon arches over the street
-	for i = 0, 4 do
-		local x = -200 + i * 100
-		local col = NEON[i % #NEON + 1]
-		for _, s in ipairs({ -1, 1 }) do part({ Size = V(0.8, 14, 0.8), Position = V(x, 7, cz + s * 11), Color = rgb(20, 20, 24), Material = Enum.Material.Metal }) end
-		local arch = part({ Size = V(0.8, 0.8, 23), Position = V(x, 14, cz), Color = col, Material = Enum.Material.Neon })
-		light(arch, col, 30, 2.5)
 	end
 end
 
@@ -1442,10 +1234,10 @@ local PLACES = {
 	{ id = "meet", name = "Encontro Solaris", pos = V(105, 0, 0), r = 75 },
 	{ id = "posto", name = "Posto Aurora", pos = V(260, 0, -60), r = 35 },
 	{ id = "loja", name = "Solaris Motors", pos = V(-220, 0, -100), r = 45 },
-	{ id = "centro", name = "Centro", pos = V(0, 0, -390), r = 90 },
-	{ id = "praia", name = "Mirante do Píer", pos = V(0, 0, 500), r = 25 },
-	{ id = "sakura", name = "Distrito Sakura", pos = V(-300, 0, 180), r = 90 },
-	{ id = "neon", name = "Rua Neon", pos = V(0, 0, -235), r = 100 },
+	{ id = "centro", name = "Central (中環)", pos = V(0, 0, -390), r = 90 },
+	{ id = "praia", name = "Victoria Harbour", pos = V(0, 0, 500), r = 25 },
+	{ id = "sakura", name = "Temple Street (廟街)", pos = V(-300, 0, 180), r = 90 },
+	{ id = "neon", name = "Mong Kok (旺角)", pos = V(0, 0, -235), r = 100 },
 	{ id = "porto", name = "Porto de Contêineres", pos = V(330, 0, 340), r = 70 },
 	{ id = "tunel", name = "Túnel da Serra", pos = V(-420, 0, -25), r = 60 },
 	{ id = "drift", name = "Arena de Drift", pos = V(320, 0, 20), r = 60 },
@@ -2264,7 +2056,10 @@ task.spawn(function()
 			for _, n in ipairs(nightLights) do
 				if n.l then n.l.Enabled = night end
 				if n.band then n.band.Material = night and Enum.Material.Neon or Enum.Material.Glass n.band.Transparency = night and 0.55 or 1 end
-				if n.glow then n.glow.Material = night and Enum.Material.Neon or Enum.Material.SmoothPlastic end
+				if n.glow then
+					n.dayMat = n.dayMat or n.glow.Material
+					n.glow.Material = night and Enum.Material.Neon or n.dayMat
+				end
 			end
 			-- spawned cars switch headlights too
 			for _, car in ipairs(carsFolder:GetChildren()) do
@@ -2272,9 +2067,12 @@ task.spawn(function()
 					if d:IsA("SpotLight") then d.Enabled = night end
 				end
 			end
-			atmo.Density = night and 0.34 or 0.3
-			Lighting.OutdoorAmbient = night and rgb(95, 100, 125) or rgb(120, 120, 130)
-			Lighting.Brightness = night and 3 or 2.6
+			atmo.Density = night and 0.4 or 0.34
+			atmo.Color = night and rgb(120, 110, 140) or rgb(205, 196, 182)
+			Lighting.OutdoorAmbient = night and rgb(90, 96, 124) or rgb(128, 128, 138)
+			Lighting.Brightness = 3
+			Lighting.ExposureCompensation = night and 0.35 or 0.15
+			bloom.Intensity = night and 0.9 or 0.55 -- neon glows more at night
 		end
 		task.wait(2)
 		local _ = last

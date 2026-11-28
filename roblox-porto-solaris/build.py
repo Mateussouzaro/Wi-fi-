@@ -16,7 +16,9 @@ client = (root / "src/Client.lua").read_text()
 catalogo = (root / "src/Catalogo.lua").read_text()
 loja = (root / "src/Concessionaria.lua").read_text()
 controles = (root / "src/ControlesMobile.lua").read_text()
-assert "]]>" not in server + client + catalogo + loja + controles
+hongkong = (root / "src/HongKong.lua").read_text()
+cidade = (root / "src/Cidade.lua").read_text()
+assert "]]>" not in server + client + catalogo + loja + controles + hongkong + cidade
 ref = iter(f"RBX{i:032X}" for i in range(1, 1000))
 
 
@@ -24,8 +26,8 @@ def item(cls, name, body="", children=""):
     return f'<Item class="{cls}" referent="{next(ref)}"><Properties><string name="Name">{name}</string>{body}</Properties>{children}</Item>'
 
 
-def script(cls, name, src, disabled=False):
-    return item(cls, name, f'<bool name="Disabled">{"true" if disabled else "false"}</bool><ProtectedString name="Source"><![CDATA[{src}]]></ProtectedString>')
+def script(cls, name, src, disabled=False, children=""):
+    return item(cls, name, f'<bool name="Disabled">{"true" if disabled else "false"}</bool><ProtectedString name="Source"><![CDATA[{src}]]></ProtectedString>', children)
 
 
 def name_of(i):
@@ -179,8 +181,8 @@ xml = '<roblox version="4">'
 xml += item("Workspace", "Workspace", '<float name="Gravity">196.2</float>')
 xml += item("Lighting", "Lighting", '<token name="Technology">4</token>')
 xml += item("ReplicatedStorage", "ReplicatedStorage", children=rs_children)
-xml += item("ServerScriptService", "ServerScriptService", children=script("Script", "PortoSolaris", server) + sss_fortune)
-xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja) + script("LocalScript", "ControlesMobile", controles)))
+xml += item("ServerScriptService", "ServerScriptService", children=script("Script", "PortoSolaris", server, children=item("ModuleScript", "MapaHongKong", f'<ProtectedString name="Source"><![CDATA[{hongkong}]]></ProtectedString>')) + sss_fortune)
+xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja) + script("LocalScript", "ControlesMobile", controles) + script("LocalScript", "Cidade", cidade)))
 xml += item("StarterGui", "StarterGui", children=kids("Place in StarterGui"))
 cars_xml = (root / "assets/cars.xml").read_text(encoding="utf-8")
 xml += item("ServerStorage", "ServerStorage", children=item("Folder", "Vehicles", children=cars_xml))

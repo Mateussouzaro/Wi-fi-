@@ -255,7 +255,7 @@ function Inst.Clone(o)
 end
 function Inst.GetPivot(o)
 	if isA(o, "BasePart") then return o.CFrame end
-	if o.PrimaryPart then return o.PrimaryPart.CFrame end
+	if o.PrimaryPart then return o.PrimaryPart.CFrame * (o.PrimaryPart.PivotOffset or CFrame.new()) end
 	local c = o:GetBoundingBox()
 	return c
 end
@@ -294,6 +294,8 @@ function Inst.GetPlayerFromCharacter() return nil end
 function Inst.GetDataStore() error("DataStore not available in the mock") end
 function Inst.Create(_, obj, info, goal) return { Play = function() end, Cancel = function() end, Completed = signal() } end
 function Inst.BindToClose() end
+function Inst.GetServerTimeNow() return MOCK_TIME or 0 end
+function Inst.IsDescendantOf(o, a) local p = o.Parent while p do if p == a then return true end p = p.Parent end return false end
 function Inst.FireClient() end
 function Inst.FireAllClients() end
 function Inst.Fire() end
@@ -366,3 +368,12 @@ function DUMP(path)
 	end
 	return "[" .. table.concat(out, ",\n") .. "]"
 end
+
+-- the server Script with its MapaHongKong module
+script = Instance.new("Script")
+script.Name = "PortoSolaris"
+script.Parent = game:GetService("ServerScriptService")
+local hk = Instance.new("ModuleScript")
+hk.Name = "MapaHongKong"
+hk.Parent = script
+MODULES[hk] = "HongKong.lua"

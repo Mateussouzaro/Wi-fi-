@@ -821,7 +821,7 @@ local barTop = frame(intro, UDim2.new(1, 0, 0.12, 0), UDim2.new(0, 0, 0, 0), Col
 local barBot = frame(intro, UDim2.new(1, 0, 0.12, 0), UDim2.new(0, 0, 0.88, 0), Color3.new(0, 0, 0), 0)
 local title = text(intro, "PORTO SOLARIS", UDim2.new(1, 0, 0, 80), UDim2.new(0, 0, 0.32, 0), Enum.Font.GothamBlack, 64, Color3.new(1, 1, 1))
 title.TextStrokeTransparency = 0.6
-local subtitle = text(intro, "CAR MEET  •  MUNDO ABERTO", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 0.32, 82), Enum.Font.GothamBold, 22, GOLD)
+local subtitle = text(intro, "CAR MEET  •  INSPIRADO EM HONG KONG", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 0.32, 82), Enum.Font.GothamBold, 22, GOLD)
 local caption = text(intro, "", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 0.8, 0), Enum.Font.GothamBold, 20, Color3.new(1, 1, 1))
 caption.TextStrokeTransparency = 0.5
 title.TextTransparency = 1
@@ -839,7 +839,9 @@ local SHOTS = {
 	{ from = CFrame.lookAt(Vector3.new(60, 6, -20), Vector3.new(90, 2, 0)), to = CFrame.lookAt(Vector3.new(140, 6, -20), Vector3.new(160, 2, 0)), text = "Mostre seu carro no Encontro Solaris" },
 	{ from = CFrame.lookAt(Vector3.new(230, 10, -100), Vector3.new(260, 6, -60)), to = CFrame.lookAt(Vector3.new(290, 12, -100), Vector3.new(260, 6, -60)), text = "Passe no Posto Aurora" },
 	{ from = CFrame.lookAt(Vector3.new(-285, 12, -150), Vector3.new(-220, 8, -80)), to = CFrame.lookAt(Vector3.new(-160, 12, -150), Vector3.new(-220, 8, -80)), text = "Compre seu carro na concessionária Solaris Motors" },
-	{ from = CFrame.lookAt(Vector3.new(-80, 40, 380), Vector3.new(0, 2, 470)), to = CFrame.lookAt(Vector3.new(80, 30, 400), Vector3.new(0, 2, 470)), text = "E dirija livre até o pôr do sol na praia" },
+	{ from = CFrame.lookAt(Vector3.new(-120, 30, 300), Vector3.new(0, 70, 980)), to = CFrame.lookAt(Vector3.new(120, 26, 310), Vector3.new(60, 70, 980)), text = "Victoria Harbour, com Kowloon do outro lado" },
+	{ from = CFrame.lookAt(Vector3.new(-200, 12, -235), Vector3.new(100, 18, -235)), to = CFrame.lookAt(Vector3.new(-60, 12, -235), Vector3.new(200, 18, -235)), text = "As placas de neon de Mong Kok" },
+	{ from = CFrame.lookAt(Vector3.new(60, 40, -160), Vector3.new(0, 90, -420)), to = CFrame.lookAt(Vector3.new(-60, 50, -170), Vector3.new(0, 110, -420)), text = "E os arranha-céus de Central" },
 }
 local function runIntro()
 	camera.CameraType = Enum.CameraType.Scriptable
