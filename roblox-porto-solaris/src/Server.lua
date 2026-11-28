@@ -1319,6 +1319,7 @@ local function onPlayerAdded(plr)
 			d.tutorial = s.tutorial or false
 			d.found = s.found or {}
 			d.cores = type(s.cores) == "table" and s.cores or {}
+			d.config = type(s.config) == "string" and s.config or nil
 			d.bestLap = s.bestLap
 			d.bestDrift = s.bestDrift
 		end
@@ -1333,6 +1334,7 @@ local function onPlayerAdded(plr)
 	c.Value = d.credits
 	c.Parent = ls
 	ls.Parent = plr
+	if d.config then plr:SetAttribute("Config", d.config) end
 	if onDataLoaded then onDataLoaded(plr) end
 	task.wait(1)
 	sendProgress(plr)
@@ -1543,6 +1545,126 @@ Dirigir.OnServerInvoke = function(plr, nome)
 	return true
 end
 
+-- ------------------------------------------------------------------ CAR POSES (lean on the car, sit on the hood, float) and saved settings
+-- The server places the character (weld to the car, so it rides along) and sets the
+-- character attribute "Pose"; every client then bends the joints (PosesCarro script).
+local PoseRemote = remote("Pose")
+local POSE_KINDS = { encostar = true, capo = true, flutuar = true }
+local function clearPose(char)
+	if not char then return end
+	for _, n in ipairs({ "PoseWeld", "PoseAncora", "PoseAura" }) do
+		local o = char:FindFirstChild(n, true)
+		if o then o:Destroy() end
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and char:GetAttribute("Pose") then hum.PlatformStand = false end
+	char:SetAttribute("Pose", nil)
+end
+-- nearest car (driveable or on display) to a point
+local function nearestCar(pos, maxDist)
+	local best, bd = nil, maxDist
+	local function scan(folder)
+		for _, m in ipairs(folder:GetChildren()) do
+			if m:IsA("Model") then
+				local seat = m:FindFirstChild("DriveSeat")
+				if seat and seat:IsA("BasePart") then
+					local cf, size = m:GetBoundingBox()
+					local d = (cf.Position - pos).Magnitude - math.max(size.X, size.Z) / 2
+					if d < bd then best, bd = m, d end
+				end
+			end
+		end
+	end
+	scan(workspace)
+	scan(map)
+	return best
+end
+PoseRemote.OnServerEvent:Connect(function(plr, kind)
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	clearPose(char)
+	if kind == nil or not POSE_KINDS[kind] or not (hum and hrp) or hum.Health <= 0 or hum.SeatPart then return end
+	local target, weldTo
+	if kind == "flutuar" then
+		local anchor = Instance.new("Part")
+		anchor.Name = "PoseAncora"
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.CanQuery = false
+		anchor.Transparency = 1
+		anchor.Size = V(1, 1, 1)
+		target = CFrame.new(hrp.Position + V(0, 3, 0)) * (hrp.CFrame - hrp.Position)
+		anchor.CFrame = target
+		anchor.Parent = char
+		weldTo = anchor
+		local att = Instance.new("Attachment")
+		att.Name = "PoseAura"
+		att.Position = V(0, -1.5, 0)
+		att.Parent = hrp
+		local pe = Instance.new("ParticleEmitter")
+		pe.Color = ColorSequence.new(rgb(140, 210, 255), rgb(255, 200, 255))
+		pe.LightEmission = 1
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+		pe.Rate = 14
+		pe.Lifetime = NumberRange.new(1, 1.8)
+		pe.Speed = NumberRange.new(0.5, 1.5)
+		pe.SpreadAngle = Vector2.new(180, 180)
+		pe.Acceleration = V(0, 1.5, 0)
+		pe.Parent = att
+	else
+		local car = nearestCar(hrp.Position, 14)
+		if not car then
+			Notify:FireClient(plr, "semcarro")
+			return
+		end
+		local seat = car:FindFirstChild("DriveSeat")
+		local fwd = V(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
+		local right = V(-fwd.Z, 0, fwd.X)
+		local f1, f2 = extentAlong(car, fwd)
+		local r1, r2 = extentAlong(car, right)
+		local centre = car:GetBoundingBox().Position
+		local cF, cR = (f1 + f2) / 2, (r1 + r2) / 2
+		local base = centre - fwd * (centre:Dot(fwd) - cF) - right * (centre:Dot(right) - cR)
+		if kind == "encostar" then
+			-- standing against the side nearest to the player, facing away from the car
+			local side = ((hrp.Position - base):Dot(right) >= 0) and 1 or -1
+			local p = base + right * (side * ((r2 - r1) / 2 + 1.1)) + fwd * ((f2 - f1) * 0.08)
+			target = CFrame.lookAt(V(p.X, hrp.Position.Y, p.Z), V(p.X, hrp.Position.Y, p.Z) + right * side)
+		else
+			-- sitting on the hood (front part of the car), legs over the front
+			local p = base + fwd * ((f2 - f1) * 0.3)
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { car }
+			local hit = workspace:Raycast(V(p.X, centre.Y + 20, p.Z), V(0, -40, 0), params)
+			local y = hit and hit.Position.Y or (centre.Y + 1)
+			target = CFrame.lookAt(V(p.X, y + 1.1, p.Z), V(p.X, y + 1.1, p.Z) + fwd)
+		end
+		weldTo = seat
+	end
+	hum.PlatformStand = true
+	hum.Sit = false
+	char:PivotTo(target)
+	local w = Instance.new("WeldConstraint")
+	w.Name = "PoseWeld"
+	w.Part0 = hrp
+	w.Part1 = weldTo
+	w.Parent = hrp
+	char:SetAttribute("Pose", kind)
+end)
+
+-- graphics settings chosen in the game (saved with the player's data)
+local SalvarConfig = remote("SalvarConfig")
+SalvarConfig.OnServerEvent:Connect(function(plr, cfg)
+	local d = data[plr]
+	if not d or type(cfg) ~= "string" or #cfg > 120 or not string.match(cfg, "^[%w=;]*$") then return end
+	d.config = cfg
+	plr:SetAttribute("Config", cfg)
+	save(plr)
+end)
+
 -- ENTRAR button (ControlesMobile): sit the player in a nearby car seat, checked here
 local EntrarCarro = remote("EntrarCarro")
 EntrarCarro.OnServerEvent:Connect(function(plr, seat)
@@ -1554,6 +1676,7 @@ EntrarCarro.OnServerEvent:Connect(function(plr, seat)
 	local car = seat.Parent
 	local owner = car and car:GetAttribute("Dono")
 	if owner ~= nil and owner ~= plr.UserId then return end
+	clearPose(plr.Character)
 	seat:Sit(hum)
 end)
 

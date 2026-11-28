@@ -7,8 +7,11 @@
 -- Y (height), VaiVem (back and forth instead of a loop).
 
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 local camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+local trafficFolder = nil
 
 local function parse(str)
 	local pts = {}
@@ -106,6 +109,7 @@ end
 task.spawn(function()
 	local folder = workspace:WaitForChild("Transito", 60)
 	if not folder then return end
+	trafficFolder = folder
 	for _, m in ipairs(folder:GetChildren()) do register(m) end
 	folder.ChildAdded:Connect(register)
 	folder.ChildRemoved:Connect(function(m) movers[m] = nil end)
@@ -136,9 +140,17 @@ local lastLightUpdate = 0
 
 RunService.RenderStepped:Connect(function()
 	local now = workspace:GetServerTimeNow()
+	-- "Trânsito animado" switched off in the settings: hide the vehicles on this device
+	local trafficOn = player == nil or player:GetAttribute("CfgTransito") ~= false
+	if trafficFolder then
+		local want = trafficOn and workspace or nil
+		if trafficFolder.Parent ~= want then trafficFolder.Parent = want end
+	end
 	local camPos = camera.CFrame.Position
 	for m, mv in pairs(movers) do
-		if m.Parent then
+		if not trafficOn then
+			-- nothing to move
+		elseif m.Parent then
 			mv.frame = mv.frame + 1
 			local pivot = m:GetPivot().Position
 			-- near vehicles move every frame, far ones a few times a second (phone CPU)

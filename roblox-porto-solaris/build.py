@@ -18,7 +18,9 @@ loja = (root / "src/Concessionaria.lua").read_text()
 controles = (root / "src/ControlesMobile.lua").read_text()
 hongkong = (root / "src/HongKong.lua").read_text()
 cidade = (root / "src/Cidade.lua").read_text()
-assert "]]>" not in server + client + catalogo + loja + controles + hongkong + cidade
+configuracoes = (root / "src/Configuracoes.lua").read_text()
+poses = (root / "src/PosesCarro.lua").read_text()
+assert "]]>" not in server + client + catalogo + loja + controles + hongkong + cidade + configuracoes + poses
 ref = iter(f"RBX{i:032X}" for i in range(1, 1000))
 
 
@@ -182,7 +184,7 @@ xml += item("Workspace", "Workspace", '<float name="Gravity">196.2</float>')
 xml += item("Lighting", "Lighting", '<token name="Technology">4</token>')
 xml += item("ReplicatedStorage", "ReplicatedStorage", children=rs_children)
 xml += item("ServerScriptService", "ServerScriptService", children=script("Script", "PortoSolaris", server, children=item("ModuleScript", "MapaHongKong", f'<ProtectedString name="Source"><![CDATA[{hongkong}]]></ProtectedString>')) + sss_fortune)
-xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja) + script("LocalScript", "ControlesMobile", controles) + script("LocalScript", "Cidade", cidade)))
+xml += item("StarterPlayer", "StarterPlayer", children=item("StarterPlayerScripts", "StarterPlayerScripts", children=script("LocalScript", "Jogador", client) + script("LocalScript", "Concessionaria", loja) + script("LocalScript", "ControlesMobile", controles) + script("LocalScript", "Cidade", cidade) + script("LocalScript", "Configuracoes", configuracoes) + script("LocalScript", "PosesCarro", poses)))
 xml += item("StarterGui", "StarterGui", children=kids("Place in StarterGui"))
 cars_xml = (root / "assets/cars.xml").read_text(encoding="utf-8")
 xml += item("ServerStorage", "ServerStorage", children=item("Folder", "Vehicles", children=cars_xml))

@@ -65,6 +65,13 @@ CF.__mul = function(a, b)
 end
 CF.__add = function(a, b) return cf(a.p + b, a.m) end
 CF.__sub = function(a, b) return cf(a.p - b, a.m) end
+function CF.Lerp(a, b, t)
+	if t >= 1 then return b end
+	if t <= 0 then return a end
+	local m = {}
+	for i = 1, 3 do m[i] = {} for j = 1, 3 do m[i][j] = a.m[i][j] + (b.m[i][j] - a.m[i][j]) * t end end
+	return cf(a.p + (b.p - a.p) * t, m)
+end
 function CF.Inverse(c) local t = mT(c.m) return cf(-mvec(t, c.p), t) end
 function CF.PointToObjectSpace(c, v) return mvec(mT(c.m), v - c.p) end
 function CF.PointToWorldSpace(c, v) return c * v end
@@ -134,6 +141,7 @@ UDim2 = { new = function(xs, xo, ys, yo)
 	return { __type = "UDim2", args = { xs, xo, ys, yo }, X = { Scale = xs or 0, Offset = xo or 0 }, Y = { Scale = ys or 0, Offset = yo or 0 } }
 end }
 UDim = stub("UDim")
+RaycastParams = { new = function() return {} end }
 Enum = setmetatable({}, { __index = function(_, k) return setmetatable({}, { __index = function(_, v) return k .. "." .. v end }) end })
 
 -- ---------------------------------------------------------------- signals
@@ -152,13 +160,15 @@ end
 local BASEPART = { Part = true, WedgePart = true, CornerWedgePart = true, MeshPart = true, TrussPart = true, VehicleSeat = true, Seat = true, SpawnLocation = true, UnionOperation = true }
 local EVENTS = { Triggered = true, Changed = true, OnServerEvent = true, Event = true, PlayerAdded = true, PlayerRemoving = true, Heartbeat = true, Touched = true, ChildAdded = true, CharacterAdded = true, Completed = true,
 	OnClientEvent = true, MouseButton1Click = true, MouseButton1Down = true, MouseEnter = true, MouseLeave = true, InputBegan = true, InputEnded = true, InputChanged = true,
-	TouchPinch = true, RenderStepped = true, Activated = true, FocusLost = true }
+	TouchPinch = true, RenderStepped = true, Stepped = true, DescendantAdded = true, Activated = true, FocusLost = true }
 local Inst = {}
 local ALL = {}
 local function isA(o, c)
 	if c == "Instance" then return true end
 	if c == "BasePart" then return BASEPART[o.ClassName] == true end
 	if c == "GuiObject" then return ({ Frame = 1, TextLabel = 1, TextButton = 1, TextBox = 1, ScrollingFrame = 1, ViewportFrame = 1, ImageLabel = 1, ImageButton = 1 })[o.ClassName] ~= nil end
+	if c == "PostEffect" then return ({ BloomEffect = 1, SunRaysEffect = 1, ColorCorrectionEffect = 1, DepthOfFieldEffect = 1, BlurEffect = 1 })[o.ClassName] ~= nil end
+	if c == "Light" then return ({ PointLight = 1, SpotLight = 1, SurfaceLight = 1 })[o.ClassName] ~= nil end
 	if c == "GuiButton" then return o.ClassName == "TextButton" or o.ClassName == "ImageButton" end
 	if c == "LuaSourceContainer" then return o.ClassName == "Script" or o.ClassName == "LocalScript" or o.ClassName == "ModuleScript" end
 	if c == "Light" then return o.ClassName == "PointLight" or o.ClassName == "SpotLight" or o.ClassName == "SurfaceLight" end
@@ -294,6 +304,22 @@ function Inst.GetPlayerFromCharacter() return nil end
 function Inst.GetDataStore() error("DataStore not available in the mock") end
 function Inst.Create(_, obj, info, goal) return { Play = function() end, Cancel = function() end, Completed = signal() } end
 function Inst.BindToClose() end
+function Inst.Raycast(_, origin, dir, params)
+	-- hits the top of the highest part of the filtered model below the ray
+	local best = nil
+	for _, root in ipairs(params and params.FilterDescendantsInstances or {}) do
+		for _, d in ipairs(root:GetDescendants()) do
+			if isA(d, "BasePart") then
+				local cfp, s = d.CFrame.p, d.Size
+				if math.abs(origin.X - cfp.X) <= s.X / 2 and math.abs(origin.Z - cfp.Z) <= s.Z / 2 then
+					local top = cfp.Y + s.Y / 2
+					if not best or top > best then best = top end
+				end
+			end
+		end
+	end
+	return best and { Position = v3(origin.X, best, origin.Z) } or nil
+end
 function Inst.GetServerTimeNow() return MOCK_TIME or 0 end
 function Inst.IsDescendantOf(o, a) local p = o.Parent while p do if p == a then return true end p = p.Parent end return false end
 function Inst.FireClient() end

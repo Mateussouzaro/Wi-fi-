@@ -142,6 +142,7 @@ end
 
 -- ------------------------------------------------------------------ HUD: credits + main buttons
 local hud = frame(gui, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), DARK, 1)
+hud.Name = "HUD"
 hud.Visible = false
 local creditBox = frame(hud, UDim2.new(0, 170, 0, 42), UDim2.new(0, 14, 0, 56), DARK, 0.15)
 corner(creditBox, 21)
@@ -348,7 +349,7 @@ spawnBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ------------------------------------------------------------------ poses (built-in emotes) and photo mode
-local poseMenu = frame(gui, UDim2.new(0, 170, 0, 240), UDim2.new(1, -258, 0.5, -120), DARK, 0.1)
+local poseMenu = frame(gui, UDim2.new(0, 190, 0, 372), UDim2.new(1, -278, 0.5, -186), DARK, 0.1)
 corner(poseMenu, 14)
 poseMenu.Visible = false
 local poseLayout = Instance.new("UIListLayout")
@@ -371,8 +372,30 @@ for _, e in ipairs({ { "👋 Acenar", "wave" }, { "👉 Apontar", "point" }, { "
 		poseMenu.Visible = false
 	end)
 end
+-- poses with the car (the server places you; the PosesCarro script bends the body)
+local PoseRemote = ReplicatedStorage:WaitForChild("Pose")
+for _, e in ipairs({ { "🚗 Encostar no carro", "encostar" }, { "🛋️ Sentar no capô", "capo" }, { "✨ Flutuar", "flutuar" } }) do
+	local b = button(poseMenu, e[1], UDim2.new(1, -16, 0, 32), UDim2.new(0, 0, 0, 0), rgb(50, 40, 20))
+	b.TextSize = 14
+	b.MouseButton1Click:Connect(function()
+		PoseRemote:FireServer(e[2])
+		posed = true
+		poseMenu.Visible = false
+		toast("Ande ou pule para sair da pose", rgb(200, 210, 220))
+	end)
+end
+do
+	-- keep the menu inside short phone screens
+	local ps = Instance.new("UIScale")
+	ps.Parent = poseMenu
+	local function fitPose()
+		ps.Scale = math.clamp((camera.ViewportSize.Y - 30) / 372, 0.55, 1)
+	end
+	camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitPose)
+	fitPose()
+end
 bPose.MouseButton1Click:Connect(function()
-	if poseMenu.Visible then poseMenu.Visible = false else slideIn(poseMenu, UDim2.new(1.2, 0, 0.5, -120)) end
+	if poseMenu.Visible then poseMenu.Visible = false else slideIn(poseMenu, UDim2.new(1.2, 0, 0.5, -186)) end
 end)
 local photo = false
 local photoHint = text(gui, "📷 MODO FOTO • toque em qualquer lugar para sair", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 1, -40), Enum.Font.GothamBold, 14, Color3.new(1, 1, 1))
@@ -444,6 +467,8 @@ Notify.OnClientEvent:Connect(function(kind, a, b)
 		toast("🎉 Você comprou o " .. a .. "!")
 	elseif kind == "garage" then
 		toast("🚗 Toque no ícone de CARRO lá em cima para escolher seu carro")
+	elseif kind == "semcarro" then
+		toast("Chegue perto de um carro para essa pose", rgb(255, 120, 120))
 	elseif kind == "needcar" then
 		toast("Entre em um carro primeiro", rgb(255, 120, 120))
 	end
